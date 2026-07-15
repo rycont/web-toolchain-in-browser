@@ -1,0 +1,26 @@
+{
+  "name": "browser-webapp-runtime",
+  "private": true,
+  "type": "module",
+  "description": "Vite 8 툴체인을 브라우저 워커에서 돌린다 (개발용 워크스페이스; 배포는 JSR)",
+  "scripts": {
+    "postinstall": "node scripts/setup-oxide-wasi.mjs",
+    "setup": "node scripts/setup-oxide-wasi.mjs",
+    "test:browser": "vite build -c test/browser/vite.config.ts && node test/browser/run.mjs"
+  },
+  "devDependencies": {
+    "@rolldown/browser": "^1.1.5",
+    "buffer": "^6.0.3",
+    "events": "^3.3.0",
+    "lightningcss-wasm": "^1.32.0",
+    "memfs": "^4.64.0",
+    "path-browserify": "^1.0.1",
+    "playwright-core": "^1.50.0",
+    "util": "^0.12.5",
+    "vite": "^8.1.4",
+    "@napi-rs/wasm-runtime": "^1.1.6",
+    "@emnapi/core": "^1.11.1",
+    "@emnapi/runtime": "^1.11.1",
+    "@tybys/wasm-util": "^0.10.2"
+  }
+}

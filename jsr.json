@@ -1,0 +1,19 @@
+{
+  "name": "@rycont/browser-webapp-runtime",
+  "version": "0.0.0",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./alias": "./src/alias.ts",
+    "./shims/process": "./src/shims/process.ts",
+    "./shims/fs": "./src/shims/fs.ts",
+    "./shims/fs-promises": "./src/shims/fs-promises.ts",
+    "./shims/module": "./src/shims/module.ts",
+    "./shims/url": "./src/shims/url.ts",
+    "./shims/util": "./src/shims/util.ts",
+    "./shims/perf-hooks": "./src/shims/perf-hooks.ts"
+  },
+  "publish": {
+    "include": ["src/**/*.ts", "README.md", "LICENSE", "jsr.json"]
+  }
+}
