@@ -1,0 +1,53 @@
+name: Publish to JSR
+
+# 태그를 밀거나 수동으로 돌린다. main 푸시마다 돌리면 버전이 그대로일 때
+# "이미 존재하는 버전" 으로 실패해서 노이즈만 된다.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: '실제로 올리지 않고 검증만'
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # ⚠️ JSR 의 "Publish from CI" 는 OIDC 를 쓴다. 이 권한이 없으면 토큰 없이
+      # 인증할 방법이 없어서 실패한다.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # jsr publish 는 내부적으로 `deno publish --unstable-byonm` 을 돌린다.
+      # byonm = "bring your own node_modules" — npm 의존성을 node_modules 에서
+      # 찾으므로 설치가 선행돼야 한다.
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 버전이 jsr.json 과 태그에 일치하는지
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          JSR=$(node -p "require('./jsr.json').version")
+          if [ "$TAG" != "$JSR" ]; then
+            echo "::error::태그($TAG)와 jsr.json 버전($JSR)이 다릅니다"
+            exit 1
+          fi
+          echo "버전 일치: $JSR"
+
+      - name: 검증 (dry run)
+        run: npx jsr publish --dry-run
+
+      - name: 배포
+        if: ${{ inputs.dry-run != true }}
+        run: npx jsr publish
