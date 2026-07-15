@@ -7,10 +7,14 @@
  *       at resolveConfig
  *
  * 브라우저의 WebCrypto 가 getRandomValues / randomUUID / subtle 을 그대로 준다.
- * Node 스타일 API(createHash 등)는 **동기**라 WebCrypto(비동기)로 못 만든다.
- * 필요해지면 hash-wasm 같은 동기 구현을 붙여야 한다. 지금은 안 쓰이므로
- * 부르면 명확히 실패하게 둔다.
+ *
+ * 하지만 `createHash()` 는 WebCrypto 로 못 만든다 — Node 는 **동기**, WebCrypto 의
+ * subtle.digest() 는 **비동기**다. Vite 가 ETag 생성(`entitytag()`)에서 동기로
+ * 부르므로 순수 JS SHA-256(./sha256.ts)을 쓴다. Node 와 출력이 일치하는 것을
+ * 테스트 벡터로 확인했다.
  */
+import { sha256 } from './sha256.ts'
+
 const webcrypto = globalThis.crypto
 
 export const getRandomValues = <T extends ArrayBufferView | null>(a: T): T =>
@@ -25,13 +29,58 @@ export const randomBytes = (n: number): Uint8Array => {
   return b
 }
 
-/** Node 의 createHash 는 동기라 WebCrypto 로 흉내낼 수 없다. 필요해지면 hash-wasm 을 붙일 것. */
-export const createHash = (): never => {
-  throw new Error(
-    'crypto.createHash 는 아직 미구현입니다 (Node 는 동기, WebCrypto 는 비동기). ' +
-      '필요하면 hash-wasm 같은 동기 구현을 붙이세요.',
-  )
+/** createHash 가 돌려주는 해셔. Node 의 Hash 를 흉내낸다. */
+export interface Hash {
+  update(data: string | Uint8Array): Hash
+  digest(encoding?: 'hex' | 'base64' | 'base64url'): string | Uint8Array
 }
+
+const encodeBase64 = (b: Uint8Array): string => {
+  let s = ''
+  for (const byte of b) s += String.fromCharCode(byte)
+  return btoa(s)
+}
+
+/**
+ * Node 의 `crypto.createHash()` — **동기**다.
+ *
+ * Vite 는 ETag 생성(`entitytag()`) 등에서 이걸 동기로 부른다. WebCrypto 의
+ * subtle.digest() 는 비동기라 쓸 수 없어서 순수 JS SHA-256 을 쓴다.
+ *
+ * 알고리즘 인자는 무시하고 항상 SHA-256 이다. Vite 가 요구하는 건
+ * "결정적이고 잘 분산된 해시" 이지 특정 알고리즘이 아니다. (sha1 을 달라고 해도
+ * sha256 을 주면 ETag/캐시키 용도로는 아무 문제가 없다.)
+ */
+export const createHash = (_algorithm?: string): Hash => {
+  const chunks: Uint8Array[] = []
+  const enc = new TextEncoder()
+  const hash: Hash = {
+    update(data: string | Uint8Array): Hash {
+      chunks.push(typeof data === 'string' ? enc.encode(data) : data)
+      return hash
+    },
+    digest(encoding?: 'hex' | 'base64' | 'base64url'): string | Uint8Array {
+      let total = 0
+      for (const c of chunks) total += c.length
+      const all = new Uint8Array(total)
+      let off = 0
+      for (const c of chunks) { all.set(c, off); off += c.length }
+      const out = sha256(all)
+      if (encoding === 'hex') {
+        return Array.from(out, (b) => b.toString(16).padStart(2, '0')).join('')
+      }
+      if (encoding === 'base64') return encodeBase64(out)
+      if (encoding === 'base64url') {
+        return encodeBase64(out).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+      }
+      return out
+    },
+  }
+  return hash
+}
+
+export const hash = (algorithm: string, data: string, enc: 'hex' | 'base64' = 'hex'): string =>
+  createHash(algorithm).update(data).digest(enc) as string
 
 export default {
   getRandomValues,
@@ -39,5 +88,6 @@ export default {
   subtle,
   randomBytes,
   createHash,
+  hash,
   webcrypto,
 }

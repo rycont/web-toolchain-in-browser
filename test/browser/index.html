@@ -5,11 +5,16 @@
     <script type="module">
       const w = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
       w.onmessage = (e) => {
+        // 워커가 최상위에서 던진 에러는 우리가 직접 보고한다 (onerror 는 스택이 없다)
         window.__done = e.data
         document.getElementById('o').textContent = JSON.stringify(e.data, null, 1)
       }
       w.onerror = (e) => {
-        window.__done = [{ name: 'WORKER ERROR', ok: false, detail: e.message }]
+        window.__done = [{
+          name: 'WORKER ERROR (최상위)',
+          ok: false,
+          detail: `${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`,
+        }]
       }
     </script>
   </body>

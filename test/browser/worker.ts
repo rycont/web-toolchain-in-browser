@@ -82,17 +82,48 @@ await t('@tailwindcss/oxide-wasm32-wasi: 로드', async () => {
   return 'exports: ' + Object.keys(m).slice(0, 8).join(',')
 })
 
-// 본편 — 아직 실패한다
+await t('memfs 에 프로젝트가 실제로 있나', async () => {
+  const { fs } = await import('memfs')
+  const f = fs as unknown as {
+    existsSync(p: string): boolean
+    readdirSync(p: string): string[]
+    readFileSync(p: string, e: string): string
+  }
+  return [
+    `/app 존재=${f.existsSync('/app')}`,
+    `/app/src/main.tsx 존재=${f.existsSync('/app/src/main.tsx')}`,
+    `루트=${JSON.stringify(f.readdirSync('/'))}`,
+    `내용=${JSON.stringify(f.readFileSync('/app/src/main.tsx', 'utf8'))}`,
+  ].join(' | ')
+})
+
+let server: Awaited<ReturnType<typeof import('vite').createServer>> | undefined
+
 await t('vite: createServer({ middlewareMode })', async () => {
   const { createServer } = await import('vite')
-  const s = await createServer({
+  server = await createServer({
     configFile: false,
     logLevel: 'silent',
     root: '/app',
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     optimizeDeps: { noDiscovery: true, include: [] },
   })
-  return 'server OK: ' + Object.keys(s).slice(0, 10).join(',')
+  return 'server OK: ' + Object.keys(server).slice(0, 10).join(',')
+})
+
+await t('vite: pluginContainer.resolveId 가 root 를 붙이나', async () => {
+  if (!server) throw new Error('server 없음')
+  const env = server.environments.client
+  const a = await env.pluginContainer.resolveId('/src/main.tsx', undefined)
+  const b = await env.pluginContainer.resolveId('./src/main.tsx', '/app/index.html')
+  return `'/src/main.tsx'→${JSON.stringify(a?.id)} | './src/main.tsx'→${JSON.stringify(b?.id)}`
+})
+
+await t('vite: .tsx 를 transformRequest 로 변환', async () => {
+  if (!server) throw new Error('server 없음')
+  const r = await server.transformRequest('/src/main.tsx')
+  if (!r) throw new Error('transformRequest 가 null 반환')
+  return r.code.replace(/\s+/g, ' ').slice(0, 110)
 })
 
 ;(self as unknown as Worker).postMessage(results)

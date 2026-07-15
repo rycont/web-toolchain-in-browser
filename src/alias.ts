@@ -131,6 +131,13 @@ export function nodeShimAlias(): AliasEntry[] {
     { find: 'rolldown/utils', replacement: rolldownBrowserDist('utils-index.browser.mjs') },
     { find: 'rolldown', replacement: '@rolldown/browser' },
 
+    // ── 파일시스템 통합 ─────────────────────────────────────────────────
+    // 이걸 안 하면 fs 가 둘이 된다: JS 쪽 memfs 와, wasm(WASI)이 쓰는 별개 볼륨.
+    // rolldown 의 oxc-resolver 는 Rust 라 후자를 보므로, 프로젝트를 JS memfs 에
+    // 심어도 아무것도 못 찾는다:
+    //     pluginContainer.resolveId('/src/main.tsx') → undefined
+    { find: '@napi-rs/wasm-runtime/fs', replacement: shim('napi-wasm-runtime-fs.ts') },
+
     // ── node 빌트인 ─────────────────────────────────────────────────────
     // 긴 specifier 부터 — 접두사 매칭이 짧은 쪽에 먹히는 것을 막는다
     { find: 'node:fs/promises', replacement: shim('fs-promises.ts') },
