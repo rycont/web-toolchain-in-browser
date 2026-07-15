@@ -2,512 +2,134 @@
 
 [![JSR](https://jsr.io/badges/@rycont/web-toolchain-in-browser)](https://jsr.io/@rycont/web-toolchain-in-browser)
 
-Vite 8 툴체인을 **브라우저 워커 안에서** 돌린다. React / Tailwind / TypeScript 앱을
-서버 없이 브라우저에서 개발·실행하는 것이 목표.
+Vite 8 + React + Tailwind v4 + TypeScript 앱을 **브라우저 안에서** 빌드하고 돌린다.
+서버 없음.
 
-> **상태: 동작함.** 평범한 Vite + React + Tailwind + TypeScript Todo 앱이
-> **손댄 곳 하나 없이** 브라우저 안에서 빌드되고 iframe 에 서빙된다.
-> 서버는 없다. `npm run test:browser` 로 실제 Chrome 에서 검증한다.
+평범한 Vite 프로젝트를 **한 글자도 안 고치고** 그대로 쓴다. 콜드 스타트 1.6초,
+파일 수정 반영 약 200ms.
 
-## 왜 이게 가능해졌나
+## 요구사항
 
-[browser-vite](https://www.npmjs.com/package/browser-vite) 는 2022년 4월 (Vite 2.7 기준)
-이후로 멈춰 있다. 그때는 Vite 의 의존성이 60개에 esbuild 를 `child_process` 로 띄우는
-구조라 포크가 불가피했다.
+**COOP/COEP 헤더가 반드시 필요하다.** 없으면 아무것도 안 돈다 — rolldown 의 wasm 이
+SharedArrayBuffer 를 요구하고, 그건 cross-origin isolated 상태에서만 생긴다.
 
-Vite 8 의 런타임 의존성은 **5개**고, 네이티브인 것들이 전부 공식 wasm 트윈을 갖고 있다:
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+Service-Worker-Allowed: /
+```
 
-| Vite 8 의존성 | 브라우저 대체재 | 비고 |
-| --- | --- | --- |
-| `rolldown@~1.1.4` | `@rolldown/browser` | 공식, 버전 일치, MIT |
-| `lightningcss@^1.32.0` | `lightningcss-wasm` | 버전 일치 |
-| `postcss`, `picomatch`, `tinyglobby` | 그대로 | 순수 JS |
-| `fsevents` | — | optional, 제외 |
-| `esbuild` | — | Vite 8 에선 peerDependency (선택) |
+**HTTPS(또는 localhost)여야 한다.** `http://192.168.x.x` 는 secure context 가 아니라서
+헤더를 보내도 소용없다.
 
-그래서 **포크가 아니라 alias + 셤 레이어**로 접근한다.
-
-## 검증 현황
-
-Chrome 149 / 워커 / COOP·COEP 적용 상태에서 실측:
-
-| 항목 | 결과 |
+| | |
 | --- | --- |
-| `crossOriginIsolated` / SAB / 중첩 Worker | ✅ 전부 true |
-| `lightningcss-wasm` init + transform | ✅ `.a,.b{color:red}` (실제 최적화됨) |
-| `@rolldown/browser` 번들 (가상 모듈) | ✅ `var v_entry_default = 42` (상수 접기까지) |
-| `@tailwindcss/oxide-wasm32-wasi` 로드 | ✅ `Scanner, __fs, __volume` |
-| memfs ↔ wasm(WASI) 파일시스템 통합 | ✅ `같은 볼륨인가? true` |
-| **Vite 8 `createServer({ middlewareMode })`** | ✅ **부팅됨** |
-| `pluginContainer.resolveId` | ✅ `/src/main.tsx` → `/app/src/main.tsx` |
-| **`transformRequest('/src/main.tsx')`** | ✅ **`export const hello: string = "world"` → `export const hello = "world";`** |
-| 플레인 CSS `transformRequest` | ✅ Vite CSS 파이프라인 정상 |
-| **Tailwind v4 CSS 생성 (Vite 파이프라인 경유)** | ✅ 13,103바이트 — `min-h-screen`/`bg-slate-100`/`rounded-2xl`/`bg-sky-500`/`line-through`/`divide-y` |
-| App.tsx 변환 (TS + JSX) | ✅ JSX변환=true 타입제거=true |
-| main.tsx 의 react-dom 해석 | ✅ `__vite__cjsImport0_reactDom_client` — **optimizeDeps 가 브라우저에서 React(CJS)를 프리번들** |
-| **Todo 앱이 iframe 에 렌더 + Tailwind 스타일** | ✅ 버튼 배경 `oklch(0.685 0.169 237.323)` (= bg-sky-500), radius 8px |
-| **React 상호작용 (항목 추가)** | ✅ |
-| **편집 루프**: 파일 수정 → 무효화 → 재변환 | ✅ 195ms |
-| **편집 루프**: 편집 후 새로 등장한 Tailwind 클래스 반영 | ✅ 217ms |
+| 데스크톱 Chrome / Edge | ✅ 검증됨 |
+| 안드로이드 Chrome / 삼성 인터넷 15+ | 될 것으로 보임 (미검증) |
+| iOS Safari | 어려울 것으로 보임 — [NOTES](https://github.com/rycont/web-toolchain-in-browser/blob/main/NOTES.md#메모리--node-에선-공짜지만-브라우저에선-아니다) |
 
-`npm run test:browser` 로 전부 통과 (`test/browser/screenshot.png` 참고).
-
-![Todo 앱](test/browser/screenshot.png)
+메모리를 약 425 MB 쓴다 (PSS 기준). 데스크톱은 문제없다.
 
 ## 설치
 
 ```bash
 npx jsr add @rycont/web-toolchain-in-browser
-```
 
-### 필요한 peer dependencies
-
-**이 패키지는 혼자 동작하지 않는다.** 툴체인 자체(Vite, rolldown, Tailwind)와
-node 셤의 대체 구현들을 직접 설치해야 한다:
-
-```bash
+# peer dependencies — 직접 깔아야 한다
 npm i -D vite@8 @rolldown/browser lightningcss-wasm tailwindcss@4 \
-         memfs path-browserify events stream-browserify buffer util
+         memfs path-browserify events stream-browserify buffer util picomatch postcss
 ```
-
-왜 자동으로 안 깔리나 — **JSR 은 모듈 그래프에서만 npm 의존성을 유추한다.**
-`jsr.json` 스키마에는 의존성을 적는 자리가 아예 없다 (`name`/`version`/`license`/
-`exports`/`publish` 뿐). 그런데 이 패키지가 요구하는 것 중 상당수는 정적 분석에
-안 잡힌다:
-
-- `@rolldown/browser` — `createRequire(...).resolve()` 로 찾는다 (런타임 문자열)
-- `path-browserify` 등 — `nodeShimAlias()` 의 **replacement 문자열**이지 import 가 아니다
-
-안 깔려 있으면 `nodeShimAlias()` 가 무엇을 깔아야 하는지 알려주며 실패한다.
 
 ## 사용
 
+파일 세 개가 필요하다: 워커, 페이지, Service Worker.
+
 ```ts
-// my-worker.ts
-import '@rycont/web-toolchain-in-browser/shims/globals'   // ← Vite import 보다 먼저
+// worker.ts — Vite 가 여기서 돈다
+import '@rycont/web-toolchain-in-browser/shims/globals' // ← Vite import 보다 먼저
 import { createBrowserRuntime, serveWorker } from '@rycont/web-toolchain-in-browser/runtime'
 import inlinedPackages from 'virtual:inlined-packages'
 import vitePkg from 'vite/package.json'
 import clientMjs from 'vite/dist/client/client.mjs?raw'
 import envMjs from 'vite/dist/client/env.mjs?raw'
 
-// ⚠️ serveWorker 앞에 await 가 있으면 안 된다 — SW 요청이 유실된다
+// ⚠️ serveWorker 앞에 await 가 있으면 안 된다 — 그 사이 온 요청이 유실된다
 const ready = (async () => {
   const react = (await import('@vitejs/plugin-react')).default
   return createBrowserRuntime({
-    files: { 'index.html': '...', 'src/main.tsx': '...' },
-    packages: inlinedPackages,
+    files: { 'index.html': '…', 'src/main.tsx': '…', 'src/style.css': '@import "tailwindcss";' },
+    packages: inlinedPackages, // react 등 — 앱이 import 하는 것들
     vite: { packageJson: vitePkg, clientMjs, envMjs },
-    plugins: [react()],   // Tailwind 어댑터는 자동으로 붙는다
+    plugins: [react()], // Tailwind 는 자동으로 붙는다
   })
 })()
 serveWorker(ready)
-const runtime = await ready
 
-runtime.writeFile('src/App.tsx', newCode)   // 편집 → 무효화까지 한 번에
+const runtime = await ready
+runtime.writeFile('src/App.tsx', code) // 편집 → 무효화까지 한 번에
 ```
 
 ```ts
-// 페이지
+// page.ts
 import { createPreview, explainUnsupported } from '@rycont/web-toolchain-in-browser/preview'
 
 const why = explainUnsupported()
-if (why) throw new Error(why)   // 무한 대기 대신 이유를 알려준다
+if (why) throw new Error(why) // 지원 안 되면 이유를 알려준다
 
 const preview = await createPreview({
-  worker: new Worker(new URL('./my-worker.ts', import.meta.url), { type: 'module' }),
+  worker: new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' }),
   swUrl: '/sw.js',
   iframe: document.querySelector('iframe'),
 })
 await preview.load()
-await preview.reload()   // 파일 고친 뒤
+await preview.reload() // 파일 고친 뒤
 ```
 
 ```js
-// sw.js — 별도 엔트리로 빌드해서 루트에 배치. 서버는 `Service-Worker-Allowed: /` 필요.
+// sw.js — 별도 엔트리로 빌드해 루트(/sw.js)에 둔다
 import '@rycont/web-toolchain-in-browser/sw'
 ```
 
-빌드 설정은 `test/browser/vite.config.ts` 참고. 요점 셋:
-
-- `resolve.alias: nodeShimAlias()` + `conditions: ['browser', 'import', 'default']`
-- `define: nodeShimDefine()`
-- **`worker.plugins` 에도 플러그인을 넣을 것** — 워커 번들은 파이프라인이 별도다
-
-## 성능 (Chrome 149, localhost, 캐시 없음)
-
-```
-콜드 스타트 (Chrome 149, localhost, 캐시 없음)
-  워커 부팅 (셤+시딩)           211ms
-  memfs 시딩                      4ms
-  vite: createServer            186ms
-  App.tsx 변환 (TS+JSX)         103ms
-  main.tsx (React 프리번들 포함) 255ms   ← optimizeDeps 가 CJS React 를 씹는 구간
-  tailwind CSS 생성              97ms
-  ─────────────────────────────────
-  실제 연산 합계               ~860ms
-  페이지 열기 → 렌더 완료        1.6초   ← 나머지는 wasm 다운로드/인스턴스화
-
-툴체인 다운로드 (26개 파일)
-  비압축 22.1 MB  →  gzip 5.5 MB
-    3.17 MB gz   rolldown-binding.wasm32-wasi.wasm   ← 58%
-    1.53 MB gz   worker.js (Vite + 셤 + Tailwind + 테스트/앱 소스)
-    0.34 MB gz   node.js
-```
-
-자원 사용 (빈 Chrome 대비 델타, Todo 앱 렌더 완료 시점)
-```
-RSS  +641 MB      PSS  +423 MB
-CPU  +2.7초 (전 코어 합산)      유휴 시 +0.00초/5초
-```
-
-**메모리가 무겁다.** rolldown 의 wasm 이 1 GiB 를 예약하는데 Node 와 달리
-브라우저에서는 그게 상당 부분 물리 메모리로 잡힌다. 데스크톱은 괜찮지만
-모바일은 이 숫자로 어렵다 — iOS Safari 검증이 필요하다.
-
-대부분이 `.wasm` 이라 immutable 캐시가 잘 먹는다 — 두 번째 방문부터는 1.6초의
-상당 부분이 사라진다. `worker.js` 에는 지금 테스트 코드와 Todo 앱 소스가 같이
-들어있어서 실제 제품에선 더 작다. Brotli 를 쓰면 wasm 이 gzip 대비 15~20% 더 준다.
-
-**HMR 은 안 붙였다.** 서버가 살아있으므로 편집 시 바뀐 파일만 다시 변환된다
-(`.tsx` 하나 ≈ 100ms, iframe 리로드 포함 200~300ms 예상). HMR 의 이점은 속도가
-아니라 **상태 보존**이다 — 리로드하면 앱 상태가 날아간다. 거슬리면 그때
-`ws` → BroadcastChannel 로 얹으면 된다 (`server.hot` 은 이미 살아있다).
-
-## 알아낸 것들
-
-### SharedArrayBuffer 는 못 끈다 — 스레드 메커니즘이 둘이다
-
-`asyncWorkPoolSize` 를 0 으로 하면 워커 풀이 사라지는데, 그래도 SAB 는 필요하다.
-**별개의 메커니즘 둘이 있기 때문이다:**
-
-| | 용도 | 끌 수 있나 |
-| --- | --- | --- |
-| `asyncWorkPoolSize: 4` | emnapi 가 **Node 의 libuv 스레드풀**을 흉내낸 것 (`napi_create_async_work` 용) | ✅ `0` 이면 메인 스레드에서 돈다 |
-| `wasi.thread-spawn` | **Rust 의 std::thread / rayon** — rolldown 의 진짜 병렬 처리 | ❌ **wasm 바이너리에 컴파일돼 있다** |
-
-실측 (`patchRolldownWasm` 으로 스윕):
-
-```
-원본         (shared=true,  pool=4) → ✅ 앱 정상
-풀만 끔      (shared=true,  pool=0) → ✅ 앱 정상     ← 워커 풀은 꺼도 된다
-공유메모리 끔 (shared=false, pool=0) → ❌ 실패       ← SAB 는 못 뺀다
-```
-
-wasm 이 `wasi.thread-spawn` 을 import 하도록 컴파일된 이상 공유 메모리는 스펙상
-강제이고, JS 쪽 설정으로 못 뺀다.
-
-### 어떤 wasm 이 SAB 를 요구하나 (Tailwind 는 이제 해당 없음)
-
-wasm 빌드 툴체인에 따라 갈린다. napi-rs/emnapi 로 빌드된 Rust wasm 은 전부
-`wasi.thread-spawn` 을 import 하고, 그건 공유 메모리를 스펙상 강제한다.
-
-| 패키지 | 빌드 | 스레드 | SAB |
-| --- | --- | --- | --- |
-| `@rolldown/browser` (10.4M) | napi-rs/emnapi | `wasi.thread-spawn` | **필요** |
-| `@oxc-transform/binding-wasm32-wasi` (3.2M) | napi-rs/emnapi | `wasi.thread-spawn` | **필요** |
-| `@tailwindcss/oxide-wasm32-wasi` (1.7M) | napi-rs/emnapi | `wasi.thread-spawn` | **필요** |
-| `esbuild-wasm` (14M) | Go | 없음 | 불필요 |
-| `lightningcss-wasm` (16M) | wasm-bindgen | 없음 | 불필요 |
-
-Vite 6 + esbuild-wasm 으로 내려가면 rolldown 쪽 SAB 요구는 사라지지만,
-**Tailwind v4 의 oxide 가 혼자서 SAB 를 강제**하므로 Vite 버전과 무관하게 필요하다.
-탈출구는 Tailwind v3(순수 JS) 뿐.
-
-→ 결론: `Cross-Origin-Opener-Policy: same-origin` +
-`Cross-Origin-Embedder-Policy: credentialless` 를 걸고 간다. 자체 도메인의
-독립 앱이면 비용은 사실상 없다. 남의 사이트에 임베드해야 하면 얘기가 달라진다.
-
-### 메모리: Node 에선 공짜지만 **브라우저에선 아니다** ⚠️
-
-먼저 실측 결과부터 (Chrome 149, Todo 앱 렌더 완료 시점, 빈 Chrome 대비 델타):
-
-```
-RSS  +641 MB   (실제 물리 메모리)
-PSS  +423 MB   (공유 페이지를 배분한 값 — 더 정직하다)
-CPU  +2.7초    (전 코어 합산. wall clock 1.6초이므로 평균 ~1.7 코어)
-유휴 시 CPU     +0.00초 / 5초   ← 백그라운드 소모 없음
-
-performance.measureUserAgentSpecificMemory():
-  총 1,121 MB — 그중 1,115 MB 가 DedicatedWorkerGlobalScope
-```
-
-**아래 Node 측정은 브라우저에 그대로 적용되지 않는다.** Node/V8 에서는
-1 GiB 예약이 lazy commit 되어 RSS 가 +1.6 MB 였지만, 브라우저에서는 실제로
-수백 MB 가 물리 메모리로 잡힌다. 예약이 공짜가 아니다.
-
-데스크톱에서는 문제없지만 **모바일에서는 이 숫자로는 어렵다.**
-
-#### wasm 메모리 스윕 — iOS 가 막히는 진짜 이유
-
-`rolldown-binding.wasi-browser.js` 는 tarball 안의 평범한 JS 라 패치할 수 있다
-(`src/patch-rolldown-wasm.ts`). 유효한 조합만 스윕한 결과:
-
-| initial | maximum | 결과 | PSS |
-| --- | --- | --- | --- |
-| 1 GiB (16384) | 4 GiB (65536) — **원본** | ✅ 정상 | +425 MB |
-| 1 GiB | 2 GiB (32768) | ✅ 정상 | +437 MB |
-| 1 GiB | 1 GiB (16384) | ❌ 실패 | — |
-| 16 MiB (256) | 256 MiB / 1 GiB | ❌ `createServer` 실패 | — |
-
-읽는 법:
-
-- **rolldown 은 빌드 중 1 GiB 를 넘긴다.** maximum 을 1 GiB 로 조이면 죽고
-  2 GiB 면 산다. 즉 `maximum` 의 하한이 **2 GiB** 다.
-- **`initial` 은 못 낮춘다.** 16 MiB 로 두면 createServer 단계에서 죽는다.
-  napi-rs 가 크게 잡는 데는 이유가 있었다.
-
-그런데 **iOS Safari 는 `maximum` 이 2 GiB 면 초기화 단계에서 OOM 을 낸다**는 보고가
-있다 ([godotengine/godot#70621](https://github.com/godotengine/godot/issues/70621),
-Safari 16.2 기준. 256 MB 로 낮추면 해결). rolldown 의 하한(2 GiB)과 iOS 의
-상한(≈256 MB~1 GB)이 **겹치지 않는다.**
-
-→ **rolldown 기반 Vite 8 은 iOS Safari 에서 어려울 가능성이 높다.** 다만 이건
-아직 **추론이다** — iOS 를 직접 돌려본 적이 없고, 위 보고는 2022년 Safari 16.2
-기준이다. 최신 Safari 는 다를 수 있다. 확인하려면 실기기 테스트가 필요하다.
-
-모바일을 열어야 한다면 esbuild-wasm(Go, 스레드 없음) 기반 Vite 6 이 유일한
-대안으로 보인다 — SAB 요구도 같이 사라진다 (Tailwind 는 이미 순수 JS 다).
-
-#### 안드로이드는 다르다 — iOS 의 제약이 적용되지 않는다
-
-**삼성 인터넷 / 안드로이드 Chrome 은 Chromium(Blink + V8)** 이므로 위 wasm 메모리
-문제는 iOS(WebKit/JavaScriptCore) 만의 것이다. 기능도 전부 있다:
-
-- SharedArrayBuffer: **삼성 인터넷 15.0+** (Chromium 96 추종), COOP/COEP 필수
-  ([참고](https://www.testmuai.com/learning-hub/sharedarraybuffer-browser-support/))
-- WASM 스레드: 삼성 인터넷 11.1+
-
-남는 변수는 **기기 RAM** 뿐이다 (우리는 PSS 약 425 MB 를 쓴다).
-
-#### 실기기에서 직접 확인하기
-
-```bash
-npm run serve:lan
-```
-
-자체 서명 인증서로 LAN 에 HTTPS 서버를 띄우고 접속 주소를 출력한다.
-태블릿/폰에서 열면 화면 상단에 `crossOriginIsolated`, `deviceMemory`,
-렌더 시간, JS/wasm 힙이 뜬다.
-
-⚠️ **반드시 HTTPS 여야 한다.** COOP/COEP 로 crossOriginIsolated 를 켜려면
-secure context 가 필요한데 `http://192.168.x.x` 는 secure context 가 아니다.
-그러면 SharedArrayBuffer 가 없어서 rolldown 이 초기화 단계에서 죽는다.
-(localhost 는 예외라 개발 중엔 이 문제가 안 보인다.)
-
-### (참고) Node/V8 에서의 메모리 거동
-
-`@rolldown/browser` 는 `new WebAssembly.Memory({ initial: 16384, maximum: 65536, shared: true })`
-로 1 GiB 를 잡는 것처럼 보인다. 공유 메모리는 grow 시 이동이 불가능해서 주소공간을
-미리 선점해야 하기 때문이고, napi-rs 템플릿은 "그럴 바엔 크게 잡고 grow 를 안 한다"를 택했다.
-
-실측 (Node / V8):
-
-```
-1 GiB shared Memory 생성만  →  RSS +1.6 MB      (순수 주소공간 예약)
- 16 MB 터치                 →  RSS  17.9 MB
-256 MB 터치                 →  RSS 266.0 MB     (만진 만큼만 붙음)
-
-dev 핫패스 (transform)      →  RSS ~130 MB
-풀 프로덕션 번들 피크        →  RSS  287 MB      (2565 모듈 전부)
-.tsx 1장 transform          →  0.06 ms          (200회 평균, wasm 경유)
-풀 번들                     →  730 ms           (네이티브 250ms 대비 3배)
-```
-
-Node/V8 에서 `initial` 은 lazy commit 되는 가상 주소공간이라 1 GiB 를 태우지 않는다.
-**하지만 브라우저에서는 그렇지 않다** — 위 실측 참고. 이 표는 Node 기준 참고치일 뿐이다.
-
-### `process` 셤은 최소로 — 순진한 셤이 없느니만 못하다
-
-`version` / `versions.node` 를 넣으면 emnapi 가 Node 로 오인해서 `worker_threads`
-경로를 타고 `TypeError: worker.on is not a function` → Rust 패닉으로 죽는다.
-셤이 아예 없을 때보다 크게 터진다. `src/shims/process.ts` 주석 참고.
-
-### Vite 8 이 실제로 쓰는 node API 는 이게 전부다
-
-```
-node:fs           default, `* as ns`, { existsSync, readFileSync }
-node:fs/promises  default, { constants }
-node:path         default, { basename, dirname, extname, isAbsolute, join,
-                             normalize, posix, relative, resolve, sep }
-node:events       { EventEmitter }
-node:url          { URL, fileURLToPath, pathToFileURL }
-node:util         { format, formatWithOptions, inspect, parseEnv, promisify,
-                    stripVTControlCharacters }
-node:perf_hooks   { performance }
-node:module       { Module, builtinModules, createRequire }   ← 유일하게 껄끄러움
-```
-
-`node:http` / `node:net` / `node:tls` / `node:child_process` 는
-`server.middlewareMode: true` 로 켜면 import 만 되고 호출되지 않는다.
-`middlewareMode` 는 원래 Express 에 Vite 를 끼워넣으라고 있는 옵션이고,
-켜면 Vite 가 http 서버를 만들지 않는다.
-
-### Vite 의 node 빌트인 스텁은 조용히 거짓말한다
-
-```js
-//#region __vite-browser-external
-var require___vite_browser_external = __commonJSMin((exports, module) => {
-  module.exports = {};        // ← 빈 객체. 던지지 않는다
-});
-```
-
-빌드는 통과하고 런타임에 `fs.readFileSync is not a function` 으로 터진다.
-**빌드 성공은 아무것도 보장하지 않는다.**
-
-### alias 순서 — `node:fs` 가 `node:fs/promises` 를 삼킨다
-
-Vite 의 문자열 alias 는 접두사 매칭이다. 긴 specifier 를 먼저 넣어야 한다.
-`src/alias.ts` 가 이 순서를 지킨다.
-
-### 의존성은 브라우저에서 resolve 하지 않는다
-
-고정 패키지 셋을 쓰면 로컬에서 진짜 pnpm 이 269개를 2.5초에 resolve 한다.
-그러면 resolver / semver / packument / peer deps / integrity / os·cpu 필터가 전부 사라진다.
-
-크기 (React + Tailwind + Lucide + Recharts + TanStack Router + Radix + AI SDK):
-
-```
-node_modules (디스크)                  442 MB
-tar.gz 가공 없음                        86 MB
-tar.gz 가지치기 (툴체인·tfjs·맵 제외)    11 MB   ← memfs 스냅샷
-optimizeDeps 프리번들                  0.9 MB gzip  ← dev 에서 브라우저가 받는 것
-전체 앱 빌드 (다 import)               268 KB gzip
-```
-
-참고로 npm packument 는 `react` 하나가 gzip 1.15 MB 다. 브라우저에서 트리를 걸으면
-30개 패키지에 30 MB 를 쓴다. 꼭 동적 resolve 가 필요해지면 jsDelivr 이
-semver range 를 해석해준다 (`cdn.jsdelivr.net/npm/react@^19.0.0/package.json` → 1,248 B).
-
-### Tailwind 의 `Scanner.scan()` 은 브라우저에서 **구조적으로 불가능**하다
-
-`@tailwindcss/oxide-wasm32-wasi` 의 `scan()` 은 fs 를 걷느라 rayon 스레드를 띄운다.
-napi-rs 의 wasi-browser 템플릿 구조상 두 컨텍스트 모두 막힌다:
-
-```
-메인 스레드 → RuntimeError: Atomics.wait cannot be called in this context
-             (브라우저가 메인 스레드 블로킹을 금지)
-워커       → 데드락
-```
-
-워커에서의 데드락은 이 구조 때문이다:
-
-```js
-// 부모 (tailwindcss-oxide.wasi-browser.js)
-onCreateWorker() {
-  const worker = new Worker(new URL('./wasi-worker-browser.mjs', import.meta.url), ...)
-  worker.addEventListener('message', __wasmCreateOnMessageForFsProxy(__fs))  // 내 이벤트루프로 답하겠다
+### 빌드 설정
+
+```ts
+// vite.config.ts
+import { nodeShimAlias, nodeShimDefine } from '@rycont/web-toolchain-in-browser/alias'
+import { inlinePackages } from '@rycont/web-toolchain-in-browser/inline-packages-plugin'
+
+const APP_TREE = ['react', 'react-dom', 'scheduler', 'tailwindcss'] // 앱이 import 할 것들
+
+export default {
+  plugins: [inlinePackages(APP_TREE, import.meta.url)],
+  // ⚠️ 워커 번들은 플러그인 파이프라인이 별도다. 여기 안 넣으면 조용히 안 먹는다.
+  worker: { format: 'es', plugins: () => [inlinePackages(APP_TREE, import.meta.url)] },
+  resolve: { alias: nodeShimAlias(), conditions: ['browser', 'import', 'default'] },
+  define: nodeShimDefine(),
+  build: {
+    target: 'esnext',
+    rolldownOptions: {
+      input: { index: 'index.html', sw: 'sw.js' },
+      // sw 는 /sw.js 로 고정 — new URL('./sw.js', import.meta.url) 은 쓰면 안 된다
+      output: { entryFileNames: (c) => (c.name === 'sw' ? 'sw.js' : 'assets/[name]-[hash].js') },
+    },
+  },
 }
-// 자식 (wasi-worker-browser.mjs)
-const fs = createFsProxy(__memfsExported)   // fs 호출을 부모에게 postMessage
 ```
 
-부모가 "내 이벤트루프로 자식의 fs 요청에 답하겠다" 고 등록해놓고 곧바로
-`Atomics.wait()` 으로 그 이벤트루프를 멈춘다. **요구사항이 상호배타적이라 설정으로
-풀리지 않는다.** 파일이 없으면 즉시 반환하고, 있으면 멈춘다.
-
-**우회**: 데드락은 fs 를 걷는 `scan()` 에만 있다. `scanFiles(contents)` 는 내용을
-직접 받으므로 fs 도 스레드도 안 건드리고 잘 돈다:
-
-```
-scanFiles() 반환: 8개 — bg-sky-500,class,flex,hi,items-center,p-4,rounded-lg,text-white
-```
-
-그래서 `src/tailwind.ts` 는 **fs 걷기를 JS 로 하고**(memfs 는 동기라 공짜다) 후보
-추출만 wasm 에 맡긴 뒤 `tailwindcss` 의 `compile().build(candidates)` 로 CSS 를 만든다.
-`@tailwindcss/vite` 와 `@tailwindcss/node` 를 통째로 대체한다.
-
-### oxide 를 버리면 Tailwind 가 순수 JS 로 돈다 ← **해결됨**
-
-`@tailwindcss/oxide-wasm32-wasi` 는 브라우저에서 못 쓴다:
-
-- `scan()` 은 fs 를 걷느라 rayon 스레드를 띄우는데, 메인 스레드에서는
-  `Atomics.wait cannot be called in this context` 로 죽고, 워커에서는 데드락이다
-  (부모가 자식의 fs 요청에 답하겠다고 등록해놓고 곧바로 `Atomics.wait()` 으로
-  자기 이벤트루프를 멈춘다 — 요구사항이 상호배타적이다).
-- `scanFiles(contents)` 는 fs 를 안 건드려서 그 데드락은 피하지만, **oxide wasm 을
-  로드하는 것만으로 rolldown 과 충돌해 멈춘다** (원인 미상. 별도 워커로 분리해도
-  안 됐다. 모듈 평가와 wasm 인스턴스화까지는 정상인데 `self.onmessage` 가 안 불렸다).
-
-**해법: oxide 를 아예 안 쓴다.** `compile().build(candidates)` 는 **모르는 후보를
-조용히 무시**하므로 **과추출이 안전하고 누락만 위험하다.** 정규식으로 게걸스럽게
-긁으면 된다. 실측:
-
-```
-oxide 후보: 29개 → CSS 9,962 바이트
-JS   후보: 41개 → CSS 9,962 바이트     ← 과추출했는데 결과 동일
-두 CSS 가 동일한가? ✅ 완전히 같음 (바이트 단위)
-```
-
-같이 사라진 것: 블로커, **Tailwind 쪽 SAB 요구**, wasm 1.7 MB.
-구현은 `src/extract-candidates.ts` — 30줄이다.
-
-함정 하나: 처음엔 따옴표·`=`·꺾쇠를 문자 클래스에 넣었다가 `className="flex` 를
-한 토큰으로 삼켜서 `.flex` 를 통째로 놓쳤다. 따옴표는 **구분자**여야 한다.
-다만 arbitrary value 안에는 따옴표가 들어갈 수 있어서(`content-['hi']`)
-대괄호 패스를 따로 돌려 union 한다.
-
-### `@tailwindcss/browser` 는 DOM 스캐너다 — 이 용도엔 안 맞는다
-
-```js
-querySelectorAll('[class]')                          // 렌더된 class 속성을 긁는다
-querySelectorAll('style[type="text/tailwindcss"]')   // 사용자 CSS 도 받아준다
-MutationObserver → document.head.append(<style>)
-wasm/oxide/Atomics/SharedArrayBuffer: 0건
-```
-
-파일 하나 272 KB, 의존성 0. **Tailwind 가 순수 JS 로 돈다는 증거**이긴 하다.
-하지만 소스가 아니라 **렌더된 DOM** 을 스캔하므로:
-
-- 아직 마운트 안 된 컴포넌트(조건부 렌더링/라우팅)의 클래스는 누락
-- 첫 페인트에 CSS 가 없어 깜빡임
-- 소스를 스캔하는 프로덕션 빌드와 **결과가 갈린다**
-
-프리뷰용으론 쓸 만하지만 "수정 없이 그대로 돌아간다" 가 목표면 함정이다.
-
-### `@tailwindcss/node` 는 버그라서 뺀 게 아니라 **Node 어댑터**라서 뺐다
-
-```
-registerHooks ×2   ← Node 의 ESM 로더 훅. 브라우저에 대응물이 없다
-createRequire ×1   pathToFileURL ×2   require.cache ×1
-```
-
-Tailwind 의 순수 JS 코어는 `tailwindcss` 의 `compile(css, { loadStylesheet, loadModule })`
-이고, 그 훅들이 곧 호스트를 꽂는 자리다. `@tailwindcss/node` 는 거기에 Node 를 꽂은 것이고
-`src/tailwind.ts` 는 memfs 를 꽂은 것이다. 대체이지 우회가 아니다.
-
-### `@rolldown/browser` 의 wasi-browser 는 워커를 상정하지 않는다
-
-```js
-// onCreateWorker 안
-worker.addEventListener('message', (event) => {
-  if (event.data?.type === 'error')
-    window.dispatchEvent(new CustomEvent('napi-rs-worker-error', ...))  // 워커엔 window 가 없다
-})
-```
-
-에러 보고 경로가 워커에서 터지므로 **진짜 에러가 `window is not defined` 로 가려진다.**
-디버깅할 때 이걸 먼저 의심할 것.
-
-### workerd 는 테스트 타깃이 될 수 없다
-
-```json
-{ "SharedArrayBuffer": "function",
-  "WebAssembly.Memory shared:true": "OK",
-  "Worker": "undefined" }
-```
-
-SAB 는 오히려 있다. 하지만 `Worker` 가 없어서 `wasi.thread-spawn` 이 불가능하고,
-CF Workers 의 메모리 상한 128 MB 는 측정된 130–287 MB 와 맞지 않는다.
-그리고 애초에 브라우저가 아니라서 초록불이 떠도 아무 보장이 없다.
-테스트는 Playwright + 실제 Chrome 으로 한다 (`test/browser/`).
+전체 예제는 [`test/browser/`](https://github.com/rycont/web-toolchain-in-browser/tree/main/test/browser) 참고.
 
 ## 개발
 
 ```bash
 npm install
-npm run test:browser     # COOP/COEP 걸고 실제 Chrome 워커에서 검증
+npm run test:browser   # COOP/COEP 걸고 실제 Chrome 에서 검증 + 스크린샷
+npm run serve:lan      # LAN 에 HTTPS 로 띄운다 (실기기 확인용)
 ```
+
+## 이게 어떻게 되는가
+
+실측치와 함정들은 **[NOTES.md](https://github.com/rycont/web-toolchain-in-browser/blob/main/NOTES.md)** 에 있다 — SharedArrayBuffer 가 왜 필수인지,
+Tailwind 의 oxide 를 왜 버렸는지, Vite 8 이 실제로 쓰는 node API 는 무엇인지 등.
 
 ## 라이선스
 
