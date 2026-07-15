@@ -1,7 +1,24 @@
 // COOP/COEP 가 걸린 실제 브라우저 워커 안에서 툴체인 조각들을 검증한다.
 // 결과는 postMessage 로 run.mjs 에 넘긴다.
-import '../../src/shims/process.ts'
+import '../../src/shims/globals.ts'
 import { checkRuntimeSupport } from '../../src/mod.ts'
+import { seedProject, seedViteInstall } from '../../src/seed.ts'
+import vitePkg from 'vite/package.json'
+import clientMjs from 'vite/dist/client/client.mjs?raw'
+import envMjs from 'vite/dist/client/env.mjs?raw'
+
+// Vite 를 import 하기 **전에** memfs 를 채워야 한다.
+// vite/dist/node/chunks/node.js 의 src/node/constants.ts 영역이 모듈 최상단에서
+// readFileSync 로 자기 package.json 을 읽기 때문이다.
+seedViteInstall({
+  packageJson: vitePkg as { version: string },
+  clientMjs,
+  envMjs,
+})
+seedProject('/app', {
+  'index.html': '<!doctype html><div id="root"></div><script type="module" src="/src/main.tsx"></script>',
+  'src/main.tsx': 'export const hello: string = "world"\n',
+})
 
 interface Result {
   name: string
@@ -72,7 +89,7 @@ await t('vite: createServer({ middlewareMode })', async () => {
     configFile: false,
     logLevel: 'silent',
     root: '/app',
-    server: { middlewareMode: true, hmr: false, watch: null },
+    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     optimizeDeps: { noDiscovery: true, include: [] },
   })
   return 'server OK: ' + Object.keys(s).slice(0, 10).join(',')
