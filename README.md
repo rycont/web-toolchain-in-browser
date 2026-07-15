@@ -3,8 +3,9 @@
 Vite 8 툴체인을 **브라우저 워커 안에서** 돌린다. React / Tailwind / TypeScript 앱을
 서버 없이 브라우저에서 개발·실행하는 것이 목표.
 
-> **상태: 실험 중.** wasm 툴체인 셋은 브라우저에서 도는 것을 실측으로 확인했다.
-> Vite 8 본체 부팅은 아직 뚫리지 않았다. 아래 "검증 현황" 참고.
+> **상태: 실험 중.** Vite 8 이 브라우저 워커에서 부팅되고 `.tsx` 의 타입을 벗기는
+> 것까지 실측으로 확인했다. 남은 블로커는 rolldown 과 Tailwind 의 wasm 이 같은
+> emnapi 컨텍스트를 공유해서 충돌하는 것 하나다. 아래 "검증 현황" 참고.
 
 ## 왜 이게 가능해졌나
 
@@ -208,9 +209,23 @@ tailwindcss-oxide.wasi-browser.js  → getDefaultContext, initial: 16384, asyncW
 
 즉 Tailwind 의 문제도, Vite CSS 의 문제도 아니고 **두 wasm 모듈의 공존** 문제다.
 
-**다음 수순**: Tailwind 를 **별도 워커**로 분리하고 postMessage 로 통신한다.
-Vite 의 transform 훅은 async 라 왕복이 자연스럽게 들어간다. realm 이 갈리면
-emnapi 컨텍스트도 갈린다.
+**시도한 것 — 별도 워커 분리 (아직 안 통함)**
+
+`src/tailwind-worker.ts` 로 Tailwind 를 별도 realm 에 분리했다. fs 접근은 전부
+메인 워커에서 끝내고(`collectProjectFiles`, `collectStylesheets`) 내용만
+postMessage 로 넘기므로 Tailwind 워커는 memfs 도 fs 도 모른다. 그런데도 멈춘다.
+
+관찰:
+- Tailwind 워커의 `onerror` 는 **안 걸린다** → 워커 로드는 성공
+- 응답이 영영 안 온다 → 워커 **내부**에서 블록
+- 같은 코드가 격리 프로브(메인 워커에 rolldown 없음)에서는 4,884바이트 반환
+
+즉 realm 분리만으로는 부족하다. Tailwind 워커가 **rolldown 이 올라간 워커의
+자식**이라는 사실 자체가 영향을 주는 것으로 보인다 (SAB 공유? 중첩 워커 2단?).
+다음에 확인할 것:
+- Tailwind 워커를 **메인 스레드에서** 띄우고 Vite 워커와 형제로 두기
+- oxide 의 `asyncWorkPoolSize` 를 0/1 로 낮춰보기
+- rolldown 을 로드하기 **전에** oxide 를 먼저 초기화해보기 (등록 순서)
 
 ### `@tailwindcss/node` 는 버그라서 뺀 게 아니라 **Node 어댑터**라서 뺐다
 

@@ -25,7 +25,8 @@
     "./shims/globals": "./src/shims/globals.ts",
     "./shims/sha256": "./src/shims/sha256.ts",
     "./shims/napi-wasm-runtime-fs": "./src/shims/napi-wasm-runtime-fs.ts",
-    "./shims/lightningcss": "./src/shims/lightningcss.ts"
+    "./shims/lightningcss": "./src/shims/lightningcss.ts",
+    "./tailwind-worker": "./src/tailwind-worker.ts"
   },
   "publish": {
     "include": [

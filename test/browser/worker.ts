@@ -147,7 +147,12 @@ await t('vite: createServer({ middlewareMode }) + tailwind 플러그인', async 
     configFile: false,
     logLevel: 'silent',
     root: '/app',
-    plugins: [tailwindBrowser({ root: '/app' })],
+    plugins: [tailwindBrowser({
+      root: '/app',
+      // Tailwind 는 별도 워커에서 — rolldown 과 emnapi 컨텍스트가 충돌한다
+      createWorker: () =>
+        new Worker(new URL('../../src/tailwind-worker.ts', import.meta.url), { type: 'module' }),
+    })],
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     optimizeDeps: { noDiscovery: true, include: [] },
   })
