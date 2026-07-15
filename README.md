@@ -45,6 +45,8 @@ Chrome 149 / 워커 / COOP·COEP 적용 상태에서 실측:
 | main.tsx 의 react-dom 해석 | ✅ `__vite__cjsImport0_reactDom_client` — **optimizeDeps 가 브라우저에서 React(CJS)를 프리번들** |
 | **Todo 앱이 iframe 에 렌더 + Tailwind 스타일** | ✅ 버튼 배경 `oklch(0.685 0.169 237.323)` (= bg-sky-500), radius 8px |
 | **React 상호작용 (항목 추가)** | ✅ |
+| **편집 루프**: 파일 수정 → 무효화 → 재변환 | ✅ 195ms |
+| **편집 루프**: 편집 후 새로 등장한 Tailwind 클래스 반영 | ✅ 217ms |
 
 `npm run test:browser` 로 전부 통과 (`test/browser/screenshot.png` 참고).
 
@@ -92,7 +94,28 @@ CPU  +2.7초 (전 코어 합산)      유휴 시 +0.00초/5초
 
 ## 알아낸 것들
 
-### SharedArrayBuffer 는 피할 수 없다 (Tailwind v4 를 쓰는 한)
+### SharedArrayBuffer 는 못 끈다 — 스레드 메커니즘이 둘이다
+
+`asyncWorkPoolSize` 를 0 으로 하면 워커 풀이 사라지는데, 그래도 SAB 는 필요하다.
+**별개의 메커니즘 둘이 있기 때문이다:**
+
+| | 용도 | 끌 수 있나 |
+| --- | --- | --- |
+| `asyncWorkPoolSize: 4` | emnapi 가 **Node 의 libuv 스레드풀**을 흉내낸 것 (`napi_create_async_work` 용) | ✅ `0` 이면 메인 스레드에서 돈다 |
+| `wasi.thread-spawn` | **Rust 의 std::thread / rayon** — rolldown 의 진짜 병렬 처리 | ❌ **wasm 바이너리에 컴파일돼 있다** |
+
+실측 (`patchRolldownWasm` 으로 스윕):
+
+```
+원본         (shared=true,  pool=4) → ✅ 앱 정상
+풀만 끔      (shared=true,  pool=0) → ✅ 앱 정상     ← 워커 풀은 꺼도 된다
+공유메모리 끔 (shared=false, pool=0) → ❌ 실패       ← SAB 는 못 뺀다
+```
+
+wasm 이 `wasi.thread-spawn` 을 import 하도록 컴파일된 이상 공유 메모리는 스펙상
+강제이고, JS 쪽 설정으로 못 뺀다.
+
+### 어떤 wasm 이 SAB 를 요구하나 (Tailwind 는 이제 해당 없음)
 
 wasm 빌드 툴체인에 따라 갈린다. napi-rs/emnapi 로 빌드된 Rust wasm 은 전부
 `wasi.thread-spawn` 을 import 하고, 그건 공유 메모리를 스펙상 강제한다.

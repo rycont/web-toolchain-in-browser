@@ -139,6 +139,63 @@ await t('tailwind: Todo 앱의 클래스로 CSS 생성', async () => {
   return `${r.code.length}바이트 | ${found.join(',')}`
 })
 
+// ── 편집 루프: 제품의 핵심인데 아직 한 번도 검증 안 됐다 ────────────────
+// 지금까지 증명한 건 "한 번 부팅해서 렌더" 뿐이다. 파일을 고쳤을 때 반영되는지는
+// 별개 문제다 — Vite 의 moduleGraph 무효화가 브라우저에서 도는지 아무도 모른다.
+await t('편집 루프: 파일 수정 → 무효화 → 재변환', async () => {
+  if (!server) throw new Error('server 없음')
+  const { fs } = await import('memfs')
+  const f = fs as unknown as { writeFileSync(p: string, d: string): void }
+  const env = server.environments.client
+
+  const edited = TODO_APP['src/App.tsx'].replace('브라우저에서 Vite 띄우기', '★편집됨★')
+  if (edited === TODO_APP['src/App.tsx']) throw new Error('치환 대상 문자열을 못 찾음')
+  f.writeFileSync('/app/src/App.tsx', edited)
+
+  const mod = env.moduleGraph.getModuleById('/app/src/App.tsx')
+  if (!mod) throw new Error('moduleGraph 에 /app/src/App.tsx 가 없음')
+  env.moduleGraph.invalidateModule(mod)
+
+  const after = await server.transformRequest('/src/App.tsx')
+  f.writeFileSync('/app/src/App.tsx', TODO_APP['src/App.tsx'])
+  env.moduleGraph.invalidateModule(mod)
+
+  if (!after) throw new Error('재변환 결과가 null')
+  if (!after.code.includes('★편집됨★')) {
+    throw new Error(`수정이 반영 안 됨. 앞 90자: ${after.code.slice(0, 90)}`)
+  }
+  return '수정이 재변환에 반영됨'
+})
+
+await t('편집 루프: Tailwind 가 새로 등장한 클래스를 주워오나', async () => {
+  if (!server) throw new Error('server 없음')
+  const { fs } = await import('memfs')
+  const f = fs as unknown as { writeFileSync(p: string, d: string): void }
+  const env = server.environments.client
+
+  // 원래 앱에 없던 유틸을 넣는다
+  const edited = TODO_APP['src/App.tsx'].replace(
+    '"min-h-screen bg-slate-100 p-8"',
+    '"min-h-screen bg-slate-100 p-8 rotate-3 backdrop-blur-md"',
+  )
+  if (edited === TODO_APP['src/App.tsx']) throw new Error('치환 대상 문자열을 못 찾음')
+  f.writeFileSync('/app/src/App.tsx', edited)
+
+  const cssMod = env.moduleGraph.getModuleById('/app/src/style.css')
+  if (cssMod) env.moduleGraph.invalidateModule(cssMod)
+  const css = await server.transformRequest('/src/style.css')
+
+  f.writeFileSync('/app/src/App.tsx', TODO_APP['src/App.tsx'])
+  if (cssMod) env.moduleGraph.invalidateModule(cssMod)
+
+  if (!css) throw new Error('null')
+  const got = ['rotate-3', 'backdrop-blur-md'].filter((c) => css.code.includes(`.${c}`))
+  if (got.length !== 2) {
+    throw new Error(`새 클래스 누락: ${['rotate-3','backdrop-blur-md'].filter(c=>!got.includes(c)).join(',')}`)
+  }
+  return `새 유틸이 생성됨: ${got.join(',')}`
+})
+
 // ── 브리지 준비 완료: 큐를 비우고 이후 요청을 바로 처리한다 ────────────────
 async function serve(q: QueuedRequest): Promise<void> {
   if (!server) {

@@ -71,6 +71,14 @@ export interface PatchRolldownWasmOptions {
    * 생략하면 원본 그대로 둔다.
    */
   asyncWorkPoolSize?: number
+  /**
+   * `WebAssembly.Memory` 의 `shared`. 원본은 true.
+   *
+   * **끌 수 없다.** rolldown 의 wasm 은 `wasi.thread-spawn` 을 import 하도록
+   * 컴파일돼 있어서(= 스레드를 쓴다) 공유 메모리가 스펙상 강제된다.
+   * false 로 두면 링크 단계에서 실패한다. 이 옵션은 그걸 **증명하기 위해** 있다.
+   */
+  shared?: boolean
 }
 
 /** 최소 Vite 플러그인 형태. */
@@ -133,6 +141,12 @@ export function patchRolldownWasm(
               '@rolldown/browser 의 부트스트랩 형태가 바뀐 것 같습니다.',
           )
         }
+      }
+
+      if (options.shared != null) {
+        const before = src
+        src = src.replace(/shared:\s*(true|false)/, `shared: ${options.shared}`)
+        if (src === before) throw new Error('patchRolldownWasm: `shared:` 를 찾지 못했습니다.')
       }
 
       if (options.asyncWorkPoolSize != null) {
