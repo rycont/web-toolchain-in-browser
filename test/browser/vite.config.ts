@@ -3,7 +3,7 @@ import { nodeShimAlias, nodeShimDefine } from '../../src/alias.ts'
 
 export default defineConfig({
   root: import.meta.dirname,
-  build: { target: 'esnext', minify: false, outDir: 'dist', emptyOutDir: true, rolldownOptions: { input: { index: 'index.html', probe: 'probe.html' } } },
+  build: { target: 'esnext', minify: false, outDir: 'dist', emptyOutDir: true, rolldownOptions: { input: { index: 'index.html' } } },
   worker: { format: 'es' },
   resolve: {
     alias: nodeShimAlias(),

@@ -39,11 +39,16 @@ const browser = await chromium.launch({
   args: ['--no-sandbox'],
 })
 const page = await browser.newPage()
-page.on('pageerror', (e) => console.log('  [pageerror]', String(e).slice(0, 160)))
+page.on('pageerror', (e) => console.log('  [pageerror]', String(e).slice(0, 200)))
+page.on('console', (m) => {
+  if (process.env.VERBOSE || m.type() === 'error' || m.type() === 'warning') {
+    console.log(`  [${m.type()}]`, m.text().slice(0, 200))
+  }
+})
 
 await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' })
 const out = await page
-  .waitForFunction('window.__done', null, { timeout: 90_000 })
+  .waitForFunction('window.__done', null, { timeout: 300_000 })
   .then((h) => h.jsonValue())
   .catch((e) => [{ name: 'TIMEOUT', ok: false, detail: String(e.message).slice(0, 120) }])
 

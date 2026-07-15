@@ -63,3 +63,23 @@ export function seedProject(root: string, files: Record<string, string>): void {
     f.writeFileSync(full, content)
   }
 }
+
+/**
+ * 프로젝트의 `node_modules/<name>/` 에 패키지를 심는다.
+ *
+ * 왜 필요한가 — 툴체인(Vite, Tailwind 플러그인)은 워커 번들에 구워져 있지만,
+ * **프로젝트가 참조하는 것들은 memfs 에 실재해야 한다**. 예를 들어 Tailwind v4 의
+ * `@import "tailwindcss"` 는 프로젝트의 node_modules 에서 CSS 를 찾는다:
+ *
+ *     Error: Can't resolve 'tailwindcss' in '/app/src'
+ *
+ * 이게 앞서 정리한 "툴체인 트리 / 앱 트리" 구분이 실제로 드러나는 지점이다.
+ * 툴체인은 굽고, 앱 트리는 memfs 에 심는다.
+ */
+export function seedNodeModule(
+  root: string,
+  name: string,
+  files: Record<string, string>,
+): void {
+  seedProject(`${root}/node_modules/${name}`, files)
+}

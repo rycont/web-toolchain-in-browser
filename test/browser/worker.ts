@@ -2,10 +2,16 @@
 // 결과는 postMessage 로 run.mjs 에 넘긴다.
 import '../../src/shims/globals.ts'
 import { checkRuntimeSupport } from '../../src/mod.ts'
-import { seedProject, seedViteInstall } from '../../src/seed.ts'
+import { seedNodeModule, seedProject, seedViteInstall } from '../../src/seed.ts'
 import vitePkg from 'vite/package.json'
 import clientMjs from 'vite/dist/client/client.mjs?raw'
 import envMjs from 'vite/dist/client/env.mjs?raw'
+// Tailwind v4 의 CSS 진입점들. 툴체인(플러그인)은 번들되지만 이 CSS 들은
+// 프로젝트의 node_modules 에서 해석되므로 memfs 에 실물로 심어야 한다.
+import twIndexCss from 'tailwindcss/index.css?raw'
+import twPreflightCss from 'tailwindcss/preflight.css?raw'
+import twThemeCss from 'tailwindcss/theme.css?raw'
+import twUtilitiesCss from 'tailwindcss/utilities.css?raw'
 
 // Vite 를 import 하기 **전에** memfs 를 채워야 한다.
 // vite/dist/node/chunks/node.js 의 src/node/constants.ts 영역이 모듈 최상단에서
@@ -16,8 +22,35 @@ seedViteInstall({
   envMjs,
 })
 seedProject('/app', {
-  'index.html': '<!doctype html><div id="root"></div><script type="module" src="/src/main.tsx"></script>',
+  'index.html':
+    '<!doctype html><div id="root"></div><script type="module" src="/src/main.tsx"></script>',
   'src/main.tsx': 'export const hello: string = "world"\n',
+  // Tailwind v4 는 CSS 가 진입점이다. @import 하나로 엔진이 켜진다.
+  'src/style.css': '@import "tailwindcss";\n',
+  // oxide 스캐너가 여기서 클래스를 주워야 한다
+  'src/App.tsx':
+    'export default () => <div className="flex items-center rounded-lg bg-sky-500 p-4 text-white">hi</div>\n',
+  'package.json': JSON.stringify({ name: 'app', type: 'module' }),
+})
+
+// @import "tailwindcss" 가 프로젝트 node_modules 에서 해석된다
+seedNodeModule('/app', 'tailwindcss', {
+  'package.json': JSON.stringify({
+    name: 'tailwindcss',
+    version: '4.3.2',
+    style: './index.css',
+    exports: {
+      '.': { style: './index.css' },
+      './index.css': './index.css',
+      './preflight.css': './preflight.css',
+      './theme.css': './theme.css',
+      './utilities.css': './utilities.css',
+    },
+  }),
+  'index.css': twIndexCss,
+  'preflight.css': twPreflightCss,
+  'theme.css': twThemeCss,
+  'utilities.css': twUtilitiesCss,
 })
 
 interface Result {
@@ -30,7 +63,10 @@ const results: Result[] = []
 
 const t = async (name: string, fn: () => unknown): Promise<void> => {
   try {
-    results.push({ name, ok: true, detail: String(await fn()).slice(0, 120) })
+    // 개별 타임박스 — 하나가 멈춰도 나머지 결과는 받는다
+    const timeout = new Promise((_, rej) =>
+      setTimeout(() => rej(new Error('120초 타임아웃 — 여기서 멈춤')), 120_000))
+    results.push({ name, ok: true, detail: String(await Promise.race([fn(), timeout])).slice(0, 120) })
   } catch (e) {
     const err = e as Error
     results.push({
@@ -124,6 +160,28 @@ await t('vite: .tsx 를 transformRequest 로 변환', async () => {
   const r = await server.transformRequest('/src/main.tsx')
   if (!r) throw new Error('transformRequest 가 null 반환')
   return r.code.replace(/\s+/g, ' ').slice(0, 110)
+})
+
+// @tailwindcss/vite 는 scan() 이 데드락이라 못 쓴다 (src/tailwind.ts 주석 참고).
+// 우리 통합으로 대체한다.
+await t('tailwind: 브라우저 워커에서 CSS 생성 (자체 통합)', async () => {
+  const { createServer } = await import('vite')
+  const { tailwindBrowser } = await import('../../src/tailwind.ts')
+  const s = await createServer({
+    configFile: false,
+    logLevel: 'silent',
+    root: '/app',
+    plugins: [tailwindBrowser({ root: '/app' })],
+    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
+    optimizeDeps: { noDiscovery: true, include: [] },
+  })
+  const r = await s.transformRequest('/src/style.css')
+  if (!r) throw new Error('CSS transformRequest 가 null')
+  const css = r.code
+  // App.tsx 의 클래스들이 실제로 생성됐는지 확인
+  const found = ['flex', 'items-center', 'rounded-lg', 'bg-sky-500', 'p-4', 'text-white']
+    .filter((c) => css.includes(`.${c}`))
+  return `${css.length}바이트 | 생성된 유틸: ${found.join(',') || '(없음!)'}`
 })
 
 ;(self as unknown as Worker).postMessage(results)

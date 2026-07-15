@@ -30,12 +30,20 @@ Chrome 149 / 워커 / COOP·COEP 적용 상태에서 실측:
 
 | 항목 | 결과 |
 | --- | --- |
+| `crossOriginIsolated` / SAB / 중첩 Worker | ✅ 전부 true |
 | `lightningcss-wasm` init + transform | ✅ `.a,.b{color:red}` (실제 최적화됨) |
-| `@rolldown/browser` 번들 (가상 모듈) | ✅ `var v_entry_default = 42` (상수 접기까지 동작) |
+| `@rolldown/browser` 번들 (가상 모듈) | ✅ `var v_entry_default = 42` (상수 접기까지) |
 | `@tailwindcss/oxide-wasm32-wasi` 로드 | ✅ `Scanner, __fs, __volume` |
-| `crossOriginIsolated` / SAB | ✅ 둘 다 true |
-| `@rolldown/browser` `transform()` | ⚠️ `r.code` 가 빈 값 — 미해결 |
-| **Vite 8 `createServer()` 부팅** | ❌ **미해결. 여기가 본편** |
+| memfs ↔ wasm(WASI) 파일시스템 통합 | ✅ `같은 볼륨인가? true` |
+| **Vite 8 `createServer({ middlewareMode })`** | ✅ **부팅됨** |
+| `pluginContainer.resolveId` | ✅ `/src/main.tsx` → `/app/src/main.tsx` |
+| **`transformRequest('/src/main.tsx')`** | ✅ **`export const hello: string = "world"` → `export const hello = "world";`** |
+| Tailwind 플러그인 단독 (`transform()` 직접 호출) | ✅ 4,884바이트 CSS, `.flex`/`.bg-sky-500`/`.p-4` 생성 |
+| 같은 Tailwind 플러그인을 **Vite 경유** | ❌ **멈춤 — 현재 블로커** |
+| React 앱 / iframe 서빙 | ⬜ 미착수 |
+
+현재 블로커는 좁혀져 있다: 플러그인 자체는 되고 Vite 파이프라인을 거치면 멈춘다.
+rolldown 의 wasi 스레드 탓이라는 가설은 기각됐다 (Tailwind 만 남겨도 멈춘다).
 
 ## 알아낸 것들
 
@@ -143,6 +151,68 @@ optimizeDeps 프리번들                  0.9 MB gzip  ← dev 에서 브라우
 참고로 npm packument 는 `react` 하나가 gzip 1.15 MB 다. 브라우저에서 트리를 걸으면
 30개 패키지에 30 MB 를 쓴다. 꼭 동적 resolve 가 필요해지면 jsDelivr 이
 semver range 를 해석해준다 (`cdn.jsdelivr.net/npm/react@^19.0.0/package.json` → 1,248 B).
+
+### Tailwind 의 `Scanner.scan()` 은 브라우저에서 **구조적으로 불가능**하다
+
+`@tailwindcss/oxide-wasm32-wasi` 의 `scan()` 은 fs 를 걷느라 rayon 스레드를 띄운다.
+napi-rs 의 wasi-browser 템플릿 구조상 두 컨텍스트 모두 막힌다:
+
+```
+메인 스레드 → RuntimeError: Atomics.wait cannot be called in this context
+             (브라우저가 메인 스레드 블로킹을 금지)
+워커       → 데드락
+```
+
+워커에서의 데드락은 이 구조 때문이다:
+
+```js
+// 부모 (tailwindcss-oxide.wasi-browser.js)
+onCreateWorker() {
+  const worker = new Worker(new URL('./wasi-worker-browser.mjs', import.meta.url), ...)
+  worker.addEventListener('message', __wasmCreateOnMessageForFsProxy(__fs))  // 내 이벤트루프로 답하겠다
+}
+// 자식 (wasi-worker-browser.mjs)
+const fs = createFsProxy(__memfsExported)   // fs 호출을 부모에게 postMessage
+```
+
+부모가 "내 이벤트루프로 자식의 fs 요청에 답하겠다" 고 등록해놓고 곧바로
+`Atomics.wait()` 으로 그 이벤트루프를 멈춘다. **요구사항이 상호배타적이라 설정으로
+풀리지 않는다.** 파일이 없으면 즉시 반환하고, 있으면 멈춘다.
+
+**우회**: 데드락은 fs 를 걷는 `scan()` 에만 있다. `scanFiles(contents)` 는 내용을
+직접 받으므로 fs 도 스레드도 안 건드리고 잘 돈다:
+
+```
+scanFiles() 반환: 8개 — bg-sky-500,class,flex,hi,items-center,p-4,rounded-lg,text-white
+```
+
+그래서 `src/tailwind.ts` 는 **fs 걷기를 JS 로 하고**(memfs 는 동기라 공짜다) 후보
+추출만 wasm 에 맡긴 뒤 `tailwindcss` 의 `compile().build(candidates)` 로 CSS 를 만든다.
+`@tailwindcss/vite` 와 `@tailwindcss/node` 를 통째로 대체한다.
+
+### `@tailwindcss/node` 는 버그라서 뺀 게 아니라 **Node 어댑터**라서 뺐다
+
+```
+registerHooks ×2   ← Node 의 ESM 로더 훅. 브라우저에 대응물이 없다
+createRequire ×1   pathToFileURL ×2   require.cache ×1
+```
+
+Tailwind 의 순수 JS 코어는 `tailwindcss` 의 `compile(css, { loadStylesheet, loadModule })`
+이고, 그 훅들이 곧 호스트를 꽂는 자리다. `@tailwindcss/node` 는 거기에 Node 를 꽂은 것이고
+`src/tailwind.ts` 는 memfs 를 꽂은 것이다. 대체이지 우회가 아니다.
+
+### `@rolldown/browser` 의 wasi-browser 는 워커를 상정하지 않는다
+
+```js
+// onCreateWorker 안
+worker.addEventListener('message', (event) => {
+  if (event.data?.type === 'error')
+    window.dispatchEvent(new CustomEvent('napi-rs-worker-error', ...))  // 워커엔 window 가 없다
+})
+```
+
+에러 보고 경로가 워커에서 터지므로 **진짜 에러가 `window is not defined` 로 가려진다.**
+디버깅할 때 이걸 먼저 의심할 것.
 
 ### workerd 는 테스트 타깃이 될 수 없다
 

@@ -1,5 +1,0 @@
-<!doctype html><html><body><pre id="o">…</pre><script type="module">
-const w = new Worker(new URL('./probe-memfs.ts', import.meta.url), { type:'module' })
-w.onmessage = e => { window.__done = e.data; document.getElementById('o').textContent = JSON.stringify(e.data,null,1) }
-w.onerror = e => { window.__done = [{name:'WORKER ERROR', ok:false, detail:e.message}] }
-</script></body></html>

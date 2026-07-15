@@ -156,9 +156,27 @@ export function createRequire(_from?: string | URL): RequireFn {
   return req
 }
 
+/** `node:module` 의 isBuiltin. @tailwindcss/node 가 쓴다. */
+export function isBuiltin(id: string): boolean {
+  return id.startsWith('node:') || builtinModules.includes(id)
+}
+
+/**
+ * `node:module` 의 register / registerHooks — Node 의 ESM 로더 훅.
+ * 브라우저엔 대응물이 없다. Vite 는 이게 없으면 `freshImport` 등에서
+ * 알아서 우회하므로(`Returns undefined on runtimes that provide neither`)
+ * 조용히 no-op 으로 둔다.
+ */
+export function register(): void {}
+export function registerHooks(): void {}
+export function syncBuiltinESMExports(): void {}
+
 export class Module {
   static builtinModules: string[] = builtinModules
   static createRequire: typeof createRequire = createRequire
+  static isBuiltin: typeof isBuiltin = isBuiltin
+  static register: typeof register = register
+  static registerHooks: typeof registerHooks = registerHooks
   static _resolveFilename(id: string): string {
     return id
   }

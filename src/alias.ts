@@ -131,6 +131,17 @@ export function nodeShimAlias(): AliasEntry[] {
     { find: 'rolldown/utils', replacement: rolldownBrowserDist('utils-index.browser.mjs') },
     { find: 'rolldown', replacement: '@rolldown/browser' },
 
+    // lightningcss → lightningcss-wasm. alias 만으론 안 된다 (wasm 은 await init()
+    // 이 필요하고 네이티브는 그 개념이 없다). shims/lightningcss.ts 가 톱레벨
+    // await 로 init 을 끝내고 re-export 한다.
+    { find: 'lightningcss', replacement: shim('lightningcss.ts') },
+
+    // Tailwind v4 의 엔진(oxide)도 네이티브다. 로더(@tailwindcss/oxide/index.js)는
+    // process.env.NAPI_RS_FORCE_WASI==='true' 면 wasi 바인딩을 require 하도록
+    // 되어 있지만(공식 tri-state 플래그), 그 로더 자체가 node:fs 와
+    // child_process.execSync('ldd --version') 같은 짓을 하므로 통째로 건너뛴다.
+    { find: '@tailwindcss/oxide', replacement: '@tailwindcss/oxide-wasm32-wasi' },
+
     // ── 파일시스템 통합 ─────────────────────────────────────────────────
     // 이걸 안 하면 fs 가 둘이 된다: JS 쪽 memfs 와, wasm(WASI)이 쓰는 별개 볼륨.
     // rolldown 의 oxc-resolver 는 Rust 라 후자를 보므로, 프로젝트를 JS memfs 에
