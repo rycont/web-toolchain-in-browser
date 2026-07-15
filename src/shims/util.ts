@@ -2,7 +2,7 @@ import u from 'util'
 
 export const format = u.format
 export const promisify = u.promisify
-export const inspect = u.inspect ?? ((x: unknown) => String(x))
+export const inspect: (x: unknown) => string = u.inspect ?? ((x: unknown) => String(x))
 export const formatWithOptions = (_opts: unknown, ...a: unknown[]): string =>
   (u.format as (...x: unknown[]) => string)(...a)
 export const parseEnv = (): Record<string, string> => ({})

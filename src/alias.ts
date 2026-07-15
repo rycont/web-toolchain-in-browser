@@ -52,7 +52,20 @@ const shim = (name: string): string =>
  */
 function rolldownBrowserDist(file: string): string {
   const req = createRequire(import.meta.url)
-  const pkgJson = req.resolve('@rolldown/browser/package.json')
+  let pkgJson: string
+  try {
+    pkgJson = req.resolve('@rolldown/browser/package.json')
+  } catch {
+    // JSR 은 이 의존성을 선언해줄 수 없다 — createRequire 문자열이라 정적 분석에
+    // 안 잡히고, jsr.json 에는 의존성을 적는 자리가 없다(스키마: name/version/
+    // license/exports/publish 뿐). 그래서 설치자가 직접 깔아야 하고,
+    // 안 깔았으면 여기서 명확히 알려주는 게 최선이다.
+    throw new Error(
+      '`@rolldown/browser` 를 찾을 수 없습니다. peer dependency 로 직접 설치해야 합니다:\n' +
+        '    npm i -D @rolldown/browser\n' +
+        '전체 목록은 README 의 "필요한 peer dependencies" 참고.',
+    )
+  }
   return new URL(`./dist/${file}`, new URL(`file://${pkgJson}`)).pathname
 }
 

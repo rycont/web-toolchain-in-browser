@@ -54,6 +54,32 @@ Chrome 149 / 워커 / COOP·COEP 적용 상태에서 실측:
 
 ![Todo 앱](test/browser/screenshot.png)
 
+## 설치
+
+```bash
+npx jsr add @rycont/web-toolchain-in-browser
+```
+
+### 필요한 peer dependencies
+
+**이 패키지는 혼자 동작하지 않는다.** 툴체인 자체(Vite, rolldown, Tailwind)와
+node 셤의 대체 구현들을 직접 설치해야 한다:
+
+```bash
+npm i -D vite@8 @rolldown/browser lightningcss-wasm tailwindcss@4 \
+         memfs path-browserify events stream-browserify buffer util
+```
+
+왜 자동으로 안 깔리나 — **JSR 은 모듈 그래프에서만 npm 의존성을 유추한다.**
+`jsr.json` 스키마에는 의존성을 적는 자리가 아예 없다 (`name`/`version`/`license`/
+`exports`/`publish` 뿐). 그런데 이 패키지가 요구하는 것 중 상당수는 정적 분석에
+안 잡힌다:
+
+- `@rolldown/browser` — `createRequire(...).resolve()` 로 찾는다 (런타임 문자열)
+- `path-browserify` 등 — `nodeShimAlias()` 의 **replacement 문자열**이지 import 가 아니다
+
+안 깔려 있으면 `nodeShimAlias()` 가 무엇을 깔아야 하는지 알려주며 실패한다.
+
 ## 사용
 
 ```ts

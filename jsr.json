@@ -1,6 +1,6 @@
 {
   "name": "@rycont/web-toolchain-in-browser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "exports": {
     ".": "./src/mod.ts",
@@ -14,7 +14,24 @@
     "./sw-bridge": "./src/sw-bridge.ts",
     "./runtime": "./src/runtime.ts",
     "./preview": "./src/preview.ts",
-    "./sw": "./src/sw.ts"
+    "./sw": "./src/sw.ts",
+    "./shims/fs": "./src/shims/fs.ts",
+    "./shims/fs-promises": "./src/shims/fs-promises.ts",
+    "./shims/module": "./src/shims/module.ts",
+    "./shims/url": "./src/shims/url.ts",
+    "./shims/util": "./src/shims/util.ts",
+    "./shims/perf-hooks": "./src/shims/perf-hooks.ts",
+    "./shims/path": "./src/shims/path.ts",
+    "./shims/tty": "./src/shims/tty.ts",
+    "./shims/os": "./src/shims/os.ts",
+    "./shims/dns": "./src/shims/dns.ts",
+    "./shims/crypto": "./src/shims/crypto.ts",
+    "./shims/http": "./src/shims/http.ts",
+    "./shims/buffer": "./src/shims/buffer.ts",
+    "./shims/child-process": "./src/shims/child-process.ts",
+    "./shims/sha256": "./src/shims/sha256.ts",
+    "./shims/napi-wasm-runtime-fs": "./src/shims/napi-wasm-runtime-fs.ts",
+    "./shims/lightningcss": "./src/shims/lightningcss.ts"
   },
   "publish": {
     "include": [

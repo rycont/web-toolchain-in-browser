@@ -17,8 +17,10 @@
  * Vite 가 execFile 을 실제로 부르는 경로는 git 조회 등 부수적인 것들이라
  * 여기서 실패해도 dev server 자체는 뜬다.
  */
-function notSupported(name: string) {
-  return (...args: unknown[]): never | void => {
+/** 호출되면 실패하는 콜백형 스텁. 반환 타입 명시는 JSR 의 slow types 회피용. */
+type CallbackStub = (...args: unknown[]) => void
+function notSupported(name: string): CallbackStub {
+  return (...args: unknown[]): void => {
     const cb = args[args.length - 1]
     const err = new Error(
       `child_process.${name} 는 브라우저에서 지원되지 않습니다`,
@@ -32,10 +34,10 @@ function notSupported(name: string) {
   }
 }
 
-export const execFile = notSupported('execFile')
-export const exec = notSupported('exec')
-export const spawn = notSupported('spawn')
-export const fork = notSupported('fork')
+export const execFile: CallbackStub = notSupported('execFile')
+export const exec: CallbackStub = notSupported('exec')
+export const spawn: CallbackStub = notSupported('spawn')
+export const fork: CallbackStub = notSupported('fork')
 
 export const execFileSync = (): never => {
   throw new Error('child_process.execFileSync 는 브라우저에서 지원되지 않습니다')

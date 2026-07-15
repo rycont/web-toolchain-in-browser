@@ -35,29 +35,35 @@ export function toVirtualPath(p: PathArg): string {
 }
 
 const f = fs as unknown as Record<string, (...a: unknown[]) => unknown>
-/** 첫 인자(경로)만 정규화해서 memfs 로 넘긴다. */
-const wrap = (name: string) => (p: PathArg, ...rest: unknown[]): unknown =>
-  f[name](toVirtualPath(p), ...rest)
 
-export const existsSync = wrap('existsSync')
-export const readFileSync = wrap('readFileSync')
-export const writeFileSync = wrap('writeFileSync')
-export const statSync = wrap('statSync')
-export const lstatSync = wrap('lstatSync')
-export const readdirSync = wrap('readdirSync')
-export const mkdirSync = wrap('mkdirSync')
-export const realpathSync = wrap('realpathSync')
-export const readlinkSync = wrap('readlinkSync')
-export const rmSync = wrap('rmSync')
-export const unlinkSync = wrap('unlinkSync')
+/**
+ * memfs 메서드를 감싸 첫 인자(경로)만 정규화한다.
+ *
+ * 반환 타입을 명시한다 — JSR 은 공개 API 의 타입을 추론으로 알아내려 하면
+ * "slow types" 로 거부하고 .d.ts 자동 생성도 포기한다.
+ */
+type FsFn = (p: PathArg, ...rest: unknown[]) => unknown
+const wrap = (name: string): FsFn => (p, ...rest) => f[name](toVirtualPath(p), ...rest)
+
+export const existsSync: FsFn = wrap('existsSync')
+export const readFileSync: FsFn = wrap('readFileSync')
+export const writeFileSync: FsFn = wrap('writeFileSync')
+export const statSync: FsFn = wrap('statSync')
+export const lstatSync: FsFn = wrap('lstatSync')
+export const readdirSync: FsFn = wrap('readdirSync')
+export const mkdirSync: FsFn = wrap('mkdirSync')
+export const realpathSync: FsFn = wrap('realpathSync')
+export const readlinkSync: FsFn = wrap('readlinkSync')
+export const rmSync: FsFn = wrap('rmSync')
+export const unlinkSync: FsFn = wrap('unlinkSync')
 
 // 콜백 방식 — tinyglobby (Vite 8 의 5개 런타임 의존성 중 하나) 가 이것들을 쓴다
-export const readdir = wrap('readdir')
-export const realpath = wrap('realpath')
-export const stat = wrap('stat')
-export const lstat = wrap('lstat')
-export const readFile = wrap('readFile')
-export const writeFile = wrap('writeFile')
+export const readdir: FsFn = wrap('readdir')
+export const realpath: FsFn = wrap('realpath')
+export const stat: FsFn = wrap('stat')
+export const lstat: FsFn = wrap('lstat')
+export const readFile: FsFn = wrap('readFile')
+export const writeFile: FsFn = wrap('writeFile')
 
 export const promises = fs.promises
 export const constants = fs.constants
