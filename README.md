@@ -50,6 +50,36 @@ Chrome 149 / 워커 / COOP·COEP 적용 상태에서 실측:
 
 ![Todo 앱](test/browser/screenshot.png)
 
+## 성능 (Chrome 149, localhost, 캐시 없음)
+
+```
+콜드 스타트
+  워커 부팅 (셤+시딩)           211ms
+  memfs 시딩                      4ms
+  vite: createServer            186ms
+  App.tsx 변환 (TS+JSX)         103ms
+  main.tsx (React 프리번들 포함) 255ms   ← optimizeDeps 가 CJS React 를 씹는 구간
+  tailwind CSS 생성              97ms
+  ─────────────────────────────────
+  실제 연산 합계               ~860ms
+  페이지 열기 → 렌더 완료        1.6초   ← 나머지는 wasm 다운로드/인스턴스화
+
+툴체인 다운로드 (26개 파일)
+  비압축 22.1 MB  →  gzip 5.5 MB
+    3.17 MB gz   rolldown-binding.wasm32-wasi.wasm   ← 58%
+    1.53 MB gz   worker.js (Vite + 셤 + Tailwind + 테스트/앱 소스)
+    0.34 MB gz   node.js
+```
+
+대부분이 `.wasm` 이라 immutable 캐시가 잘 먹는다 — 두 번째 방문부터는 1.6초의
+상당 부분이 사라진다. `worker.js` 에는 지금 테스트 코드와 Todo 앱 소스가 같이
+들어있어서 실제 제품에선 더 작다. Brotli 를 쓰면 wasm 이 gzip 대비 15~20% 더 준다.
+
+**HMR 은 안 붙였다.** 서버가 살아있으므로 편집 시 바뀐 파일만 다시 변환된다
+(`.tsx` 하나 ≈ 100ms, iframe 리로드 포함 200~300ms 예상). HMR 의 이점은 속도가
+아니라 **상태 보존**이다 — 리로드하면 앱 상태가 날아간다. 거슬리면 그때
+`ws` → BroadcastChannel 로 얹으면 된다 (`server.hot` 은 이미 살아있다).
+
 ## 알아낸 것들
 
 ### SharedArrayBuffer 는 피할 수 없다 (Tailwind v4 를 쓰는 한)

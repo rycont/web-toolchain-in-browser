@@ -52,6 +52,14 @@ page.on('console', (m) => {
   }
 })
 
+// ── 실제로 받은 리소스 기록 (크기는 dist 에서 잰다 — 스트리밍이라 content-length 없음) ──
+const fetched = new Set()
+page.on('response', (r) => {
+  const u = new URL(r.url())
+  if (u.origin === `http://localhost:${port}`) fetched.add(u.pathname)
+})
+
+const T0 = Date.now()
 await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' })
 const out = await page
   .waitForFunction('window.__done', null, { timeout: 180_000 })
@@ -62,7 +70,8 @@ console.log('\n=== Chrome / worker / COOP+COEP ===')
 let failed = 0
 for (const r of out) {
   if (!r.ok) failed++
-  console.log(`${r.ok ? '  PASS' : '  FAIL'}  ${r.name}\n        ${r.detail}`)
+  const ms = r.ms != null ? String(r.ms).padStart(6) + 'ms  ' : '          '
+  console.log(`${r.ok ? '  PASS' : '  FAIL'}  ${ms}${r.name}`)
 }
 
 // ── iframe 검증: Todo 앱이 실제로 렌더되고 Tailwind 로 스타일됐는가 ──────────
@@ -111,6 +120,7 @@ if (!frame) {
       { timeout: 10_000 },
     )
     console.log('  PASS  React 상호작용 동작 (항목 추가됨)')
+    console.log(`\n  ⏱  페이지 열기 → Todo 앱 렌더 완료: ${((Date.now() - T0) / 1000).toFixed(1)}초`)
   } catch (e) {
     console.log('  FAIL  iframe 검증:', String(e.message).slice(0, 200))
     failed++
@@ -118,6 +128,24 @@ if (!frame) {
 }
 
 await page.screenshot({ path: path.join(import.meta.dirname, 'screenshot.png'), fullPage: true })
+// 다운로드 내역 — 실제로 브라우저가 받은 것만
+import { gzipSync } from 'node:zlib'
+const rows = []
+for (const p of fetched) {
+  const f = path.join(DIST, p === '/' ? 'index.html' : p)
+  if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) continue
+  const buf = fs.readFileSync(f)
+  rows.push([p, buf.length, gzipSync(buf).length])
+}
+rows.sort((a, b) => b[2] - a[2])
+const raw = rows.reduce((a, r) => a + r[1], 0)
+const gz = rows.reduce((a, r) => a + r[2], 0)
+console.log(`\n=== 툴체인 다운로드 (${rows.length}개 파일) ===`)
+console.log(`  비압축 ${(raw / 1048576).toFixed(1)} MB  →  gzip ${(gz / 1048576).toFixed(1)} MB`)
+for (const [p, r, g] of rows.slice(0, 5)) {
+  console.log(`    ${(g / 1048576).toFixed(2).padStart(6)} MB gz  (${(r / 1048576).toFixed(1)} MB raw)  ${p}`)
+}
+
 console.log('\n스크린샷: test/browser/screenshot.png')
 
 await browser.close()

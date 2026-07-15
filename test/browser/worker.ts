@@ -46,30 +46,39 @@ interface Result {
   name: string
   ok: boolean
   detail: string
+  ms?: number
 }
 
 const results: Result[] = []
+// 워커 스크립트가 평가되기 시작한 시각 = 페이지가 new Worker() 한 직후
+const WORKER_T0 = performance.now()
 
 const t = async (name: string, fn: () => unknown): Promise<void> => {
+  const t0 = performance.now()
   try {
     const timeout = new Promise((_, rej) =>
       setTimeout(() => rej(new Error('40초 타임아웃 — 여기서 멈춤')), 40_000),
     )
-    results.push({
-      name,
-      ok: true,
-      detail: String(await Promise.race([fn(), timeout])).slice(0, 150),
-    })
+    const detail = String(await Promise.race([fn(), timeout])).slice(0, 150)
+    results.push({ name, ok: true, ms: Math.round(performance.now() - t0), detail })
   } catch (e) {
     const err = e as Error
     results.push({
       name,
       ok: false,
+      ms: Math.round(performance.now() - t0),
       detail: String(err?.stack || err?.message || e).replace(/\s+/g, ' ').slice(0, 240),
     })
   }
   ;(self as unknown as Worker).postMessage([...results])
 }
+
+results.push({
+  name: '워커 부팅 (셤+시딩까지, wasm 은 아직 lazy)',
+  ok: true,
+  ms: Math.round(WORKER_T0),
+  detail: `페이지 로드 시점부터 ${Math.round(WORKER_T0)}ms`,
+})
 
 await t('런타임 지원 (COOP/COEP, SAB, 중첩 Worker, shared wasm memory)', () => {
   const s = checkRuntimeSupport()

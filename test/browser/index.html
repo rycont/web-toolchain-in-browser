@@ -56,8 +56,8 @@
       // 워커의 Vite 서버가 준비될 때까지 기다렸다가 iframe 을 띄운다
       const serverReady = () =>
         (window.__partial ?? []).some((r) => r.name.includes('createServer') && r.ok)
-      for (let i = 0; i < 120 && !serverReady(); i++) {
-        await new Promise((r) => setTimeout(r, 500))
+      for (let i = 0; i < 1200 && !serverReady(); i++) {
+        await new Promise((r) => setTimeout(r, 20))
       }
       console.log('[bridge] serverReady=', serverReady(), '→ iframe 로드')
       document.getElementById('preview').src = '/preview/index.html'
@@ -68,8 +68,6 @@
       )
       await Promise.race([iframeLoaded, new Promise((r) => setTimeout(r, 60000))])
       console.log('[bridge] iframe load 이벤트 완료')
-      // React 렌더까지 여유를 준다
-      await new Promise((r) => setTimeout(r, 4000))
       window.__done = window.__partial
     </script>
   </body>
