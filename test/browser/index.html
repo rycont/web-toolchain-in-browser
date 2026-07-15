@@ -4,11 +4,15 @@
     <pre id="o">running…</pre>
     <script type="module">
       const w = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
+      // 워커가 매 단계마다 중간 결과를 보낸다. 하드 블록이면 마지막 postMessage
+      // 이후로 멈추므로, 어디까지 왔는지가 곧 어디서 멈췄는지다.
+      window.__partial = []
       w.onmessage = (e) => {
-        // 워커가 최상위에서 던진 에러는 우리가 직접 보고한다 (onerror 는 스택이 없다)
-        window.__done = e.data
+        window.__partial = e.data
         document.getElementById('o').textContent = JSON.stringify(e.data, null, 1)
       }
+      // 45초 뒤에도 안 끝났으면 부분 결과로 확정
+      setTimeout(() => { window.__done = window.__partial }, 45000)
       w.onerror = (e) => {
         window.__done = [{
           name: 'WORKER ERROR (최상위)',

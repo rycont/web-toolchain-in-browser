@@ -38,12 +38,10 @@ Chrome 149 / 워커 / COOP·COEP 적용 상태에서 실측:
 | **Vite 8 `createServer({ middlewareMode })`** | ✅ **부팅됨** |
 | `pluginContainer.resolveId` | ✅ `/src/main.tsx` → `/app/src/main.tsx` |
 | **`transformRequest('/src/main.tsx')`** | ✅ **`export const hello: string = "world"` → `export const hello = "world";`** |
-| Tailwind 플러그인 단독 (`transform()` 직접 호출) | ✅ 4,884바이트 CSS, `.flex`/`.bg-sky-500`/`.p-4` 생성 |
-| 같은 Tailwind 플러그인을 **Vite 경유** | ❌ **멈춤 — 현재 블로커** |
+| 플레인 CSS `transformRequest` | ✅ Vite CSS 파이프라인 정상 |
+| Tailwind 플러그인 단독 (rolldown 없이) | ✅ 4,884바이트 CSS, `.flex`/`.bg-sky-500`/`.p-4` 생성 |
+| Tailwind + rolldown 같은 워커 | ❌ **멈춤 — 현재 블로커 (emnapi 컨텍스트 충돌)** |
 | React 앱 / iframe 서빙 | ⬜ 미착수 |
-
-현재 블로커는 좁혀져 있다: 플러그인 자체는 되고 Vite 파이프라인을 거치면 멈춘다.
-rolldown 의 wasi 스레드 탓이라는 가설은 기각됐다 (Tailwind 만 남겨도 멈춘다).
 
 ## 알아낸 것들
 
@@ -189,6 +187,30 @@ scanFiles() 반환: 8개 — bg-sky-500,class,flex,hi,items-center,p-4,rounded-l
 그래서 `src/tailwind.ts` 는 **fs 걷기를 JS 로 하고**(memfs 는 동기라 공짜다) 후보
 추출만 wasm 에 맡긴 뒤 `tailwindcss` 의 `compile().build(candidates)` 로 CSS 를 만든다.
 `@tailwindcss/vite` 와 `@tailwindcss/node` 를 통째로 대체한다.
+
+### napi-rs wasi 모듈 두 개를 한 realm 에 올릴 수 없다 ← **현재 블로커**
+
+`@rolldown/browser` 와 `@tailwindcss/oxide-wasm32-wasi` 는 **둘 다 같은 emnapi
+전역 컨텍스트에 등록**하고 각자 1 GiB / 워커 4개를 잡는다:
+
+```
+rolldown-binding.wasi-browser.js   → getDefaultContext, initial: 16384, asyncWorkPoolSize: 4
+tailwindcss-oxide.wasi-browser.js  → getDefaultContext, initial: 16384, asyncWorkPoolSize: 4
+```
+
+실측:
+
+| 구성 | 결과 |
+| --- | --- |
+| oxide 단독 (Vite 없음) | ✅ `scanFiles()` 정상, 플러그인이 4,884바이트 CSS 생성 |
+| oxide + rolldown 같은 워커 | ❌ 멈춤 |
+| 플레인 CSS (Tailwind 미개입) | ✅ Vite CSS 파이프라인 자체는 멀쩡 |
+
+즉 Tailwind 의 문제도, Vite CSS 의 문제도 아니고 **두 wasm 모듈의 공존** 문제다.
+
+**다음 수순**: Tailwind 를 **별도 워커**로 분리하고 postMessage 로 통신한다.
+Vite 의 transform 훅은 async 라 왕복이 자연스럽게 들어간다. realm 이 갈리면
+emnapi 컨텍스트도 갈린다.
 
 ### `@tailwindcss/node` 는 버그라서 뺀 게 아니라 **Node 어댑터**라서 뺐다
 

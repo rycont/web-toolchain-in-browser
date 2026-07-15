@@ -27,6 +27,7 @@ seedProject('/app', {
   'src/main.tsx': 'export const hello: string = "world"\n',
   // Tailwind v4 는 CSS 가 진입점이다. @import 하나로 엔진이 켜진다.
   'src/style.css': '@import "tailwindcss";\n',
+  'src/plain.css': '.hello { color: red }\n',
   // oxide 스캐너가 여기서 클래스를 주워야 한다
   'src/App.tsx':
     'export default () => <div className="flex items-center rounded-lg bg-sky-500 p-4 text-white">hi</div>\n',
@@ -67,6 +68,7 @@ const t = async (name: string, fn: () => unknown): Promise<void> => {
     const timeout = new Promise((_, rej) =>
       setTimeout(() => rej(new Error('120초 타임아웃 — 여기서 멈춤')), 120_000))
     results.push({ name, ok: true, detail: String(await Promise.race([fn(), timeout])).slice(0, 120) })
+    ;(self as unknown as Worker).postMessage([...results, { name: `>>> 다음: ?`, ok: true, detail: '진행중' }])
   } catch (e) {
     const err = e as Error
     results.push({
@@ -74,6 +76,7 @@ const t = async (name: string, fn: () => unknown): Promise<void> => {
       ok: false,
       detail: String(err?.stack || err?.message || e).replace(/\s+/g, ' ').slice(0, 220),
     })
+    ;(self as unknown as Worker).postMessage([...results])
   }
 }
 
@@ -135,12 +138,16 @@ await t('memfs 에 프로젝트가 실제로 있나', async () => {
 
 let server: Awaited<ReturnType<typeof import('vite').createServer>> | undefined
 
-await t('vite: createServer({ middlewareMode })', async () => {
+await t('vite: createServer({ middlewareMode }) + tailwind 플러그인', async () => {
   const { createServer } = await import('vite')
+  const { tailwindBrowser } = await import('../../src/tailwind.ts')
+  // ⚠️ 서버는 워커당 **하나만** 만든다. 두 개를 만들면 rolldown wasm 인스턴스와
+  // wasi 스레드 풀이 둘이 되어 서로를 막는다(데드락).
   server = await createServer({
     configFile: false,
     logLevel: 'silent',
     root: '/app',
+    plugins: [tailwindBrowser({ root: '/app' })],
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     optimizeDeps: { noDiscovery: true, include: [] },
   })
@@ -162,23 +169,22 @@ await t('vite: .tsx 를 transformRequest 로 변환', async () => {
   return r.code.replace(/\s+/g, ' ').slice(0, 110)
 })
 
+// 먼저: Tailwind 없이 순수 CSS 를 Vite 로 통과시켜본다.
+// 이게 멈추면 문제는 Vite 의 CSS 파이프라인이지 Tailwind 가 아니다.
+await t('vite: 플레인 CSS 를 transformRequest (Tailwind 없이)', async () => {
+  if (!server) throw new Error('server 없음')
+  const r = await server.transformRequest('/src/plain.css')
+  if (!r) throw new Error('null')
+  return r.code.replace(/\s+/g, ' ').slice(0, 90)
+})
+
 // @tailwindcss/vite 는 scan() 이 데드락이라 못 쓴다 (src/tailwind.ts 주석 참고).
 // 우리 통합으로 대체한다.
 await t('tailwind: 브라우저 워커에서 CSS 생성 (자체 통합)', async () => {
-  const { createServer } = await import('vite')
-  const { tailwindBrowser } = await import('../../src/tailwind.ts')
-  const s = await createServer({
-    configFile: false,
-    logLevel: 'silent',
-    root: '/app',
-    plugins: [tailwindBrowser({ root: '/app' })],
-    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
-    optimizeDeps: { noDiscovery: true, include: [] },
-  })
-  const r = await s.transformRequest('/src/style.css')
+  if (!server) throw new Error('server 없음')
+  const r = await server.transformRequest('/src/style.css')
   if (!r) throw new Error('CSS transformRequest 가 null')
   const css = r.code
-  // App.tsx 의 클래스들이 실제로 생성됐는지 확인
   const found = ['flex', 'items-center', 'rounded-lg', 'bg-sky-500', 'p-4', 'text-white']
     .filter((c) => css.includes(`.${c}`))
   return `${css.length}바이트 | 생성된 유틸: ${found.join(',') || '(없음!)'}`
