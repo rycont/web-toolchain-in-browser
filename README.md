@@ -131,9 +131,30 @@ performance.measureUserAgentSpecificMemory():
 1 GiB 예약이 lazy commit 되어 RSS 가 +1.6 MB 였지만, 브라우저에서는 실제로
 수백 MB 가 물리 메모리로 잡힌다. 예약이 공짜가 아니다.
 
-데스크톱에서는 문제없지만 **모바일에서는 이 숫자로는 어렵다.** iOS Safari 검증이
-필요하고, 안 되면 `initial: 16384` 를 낮추는 패치(rolldown-binding.wasi-browser.js
-는 tarball 안의 평범한 JS 다)를 시도해야 한다.
+데스크톱에서는 문제없지만 **모바일에서는 이 숫자로는 어렵다.**
+
+#### `initial` 을 낮춰도 소용없다 (실측 확인)
+
+`rolldown-binding.wasi-browser.js` 는 tarball 안의 평범한 JS 라서 패치할 수 있다
+(`src/patch-rolldown-wasm.ts`). 1 GiB 예약이 범인일 거라 보고 스윕해봤다:
+
+| 설정 | RSS | PSS | 앱 동작 |
+| --- | --- | --- | --- |
+| 원본 (`initial: 16384` = 1 GiB, `asyncWorkPoolSize: 4`) | +625 MB | +418 MB | ✅ |
+| `initial: 256` (16 MiB), pool 4 | +610 MB | +403 MB | ✅ |
+| `initial: 256` (16 MiB), pool 0 | +641 MB | +423 MB | ✅ |
+
+**1 GiB → 16 MiB 로 낮췄는데 15 MB 밖에 안 줄었다.** 즉 641 MB 는 예약이 아니라
+**rolldown 이 실제로 만지는 메모리**다. 밖에서 손댈 수 있는 게 아니다.
+
+부수적으로 확인된 것 두 가지:
+- **emnapi 의 grow 경로는 멀쩡하다.** 16 MiB 에서 600 MB 까지 늘려가며 정상
+  동작하고 속도도 같다 (1.6초, transform 93ms). 이건 미지수였는데 풀렸다.
+- **`asyncWorkPoolSize: 0` 도 잘 된다.** emnapi 소스상 `<= 0` 이면
+  `singleThreadAsyncWork = true` 가 되어 워커 풀 없이 돈다. 다만 이득도 없다.
+
+모바일을 열려면 rolldown 자체가 가벼워지거나, esbuild-wasm(Go, 스레드 없음)
+기반의 Vite 6 으로 내려가는 수밖에 없어 보인다.
 
 ### (참고) Node/V8 에서의 메모리 거동
 

@@ -27,7 +27,9 @@
     "./shims/napi-wasm-runtime-fs": "./src/shims/napi-wasm-runtime-fs.ts",
     "./shims/lightningcss": "./src/shims/lightningcss.ts",
     "./extract-candidates": "./src/extract-candidates.ts",
-    "./inline-packages-plugin": "./src/inline-packages-plugin.ts"
+    "./inline-packages-plugin": "./src/inline-packages-plugin.ts",
+    "./patch-rolldown-wasm": "./src/patch-rolldown-wasm.ts",
+    "./sw-bridge": "./src/sw-bridge.ts"
   },
   "publish": {
     "include": [
