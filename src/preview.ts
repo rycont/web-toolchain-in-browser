@@ -12,7 +12,7 @@
  * ## 사용
  *
  * ```ts
- * import { createPreview } from '@rycont/browser-webapp-runtime/preview'
+ * import { createPreview } from '@rycont/web-toolchain-in-browser/preview'
  *
  * const preview = await createPreview({
  *   worker: new Worker(new URL('./my-worker.ts', import.meta.url), { type: 'module' }),

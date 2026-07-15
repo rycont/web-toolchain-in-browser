@@ -141,7 +141,7 @@ export interface TailwindBrowserPlugin {
 export function tailwindBrowser(options: TailwindBrowserOptions): TailwindBrowserPlugin {
   const { root } = options
   return {
-    name: 'browser-webapp-runtime:tailwind',
+    name: 'web-toolchain-in-browser:tailwind',
     async transform(code: string, id: string) {
       const path = id.split('?')[0]
       if (!path.endsWith('.css')) return undefined

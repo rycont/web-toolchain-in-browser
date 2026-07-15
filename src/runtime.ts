@@ -5,9 +5,9 @@
  *
  * ```ts
  * // my-worker.ts
- * import '@rycont/browser-webapp-runtime/shims/globals'   // ← 반드시 제일 먼저
- * import { createBrowserRuntime } from '@rycont/browser-webapp-runtime/runtime'
- * import { serveWorker } from '@rycont/browser-webapp-runtime/runtime'
+ * import '@rycont/web-toolchain-in-browser/shims/globals'   // ← 반드시 제일 먼저
+ * import { createBrowserRuntime } from '@rycont/web-toolchain-in-browser/runtime'
+ * import { serveWorker } from '@rycont/web-toolchain-in-browser/runtime'
  * import inlinedPackages from 'virtual:inlined-packages'
  * import vitePkg from 'vite/package.json'
  * import clientMjs from 'vite/dist/client/client.mjs?raw'

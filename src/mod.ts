@@ -1,11 +1,11 @@
 /**
- * browser-webapp-runtime — Vite 8 + React + Tailwind + TypeScript 앱을
+ * web-toolchain-in-browser — Vite 8 + React + Tailwind + TypeScript 앱을
  * 브라우저 안에서 돌린다. 서버 없이.
  *
  * 두 쪽으로 나뉜다:
  *   - 워커: `createBrowserRuntime()` + `serveWorker()`  (`./runtime.ts`)
  *   - 페이지: `createPreview()`                          (`./preview.ts`)
- *   - SW 엔트리: `import '@rycont/browser-webapp-runtime/sw'`
+ *   - SW 엔트리: `import '@rycont/web-toolchain-in-browser/sw'`
  *
  * 빌드 설정에는 `nodeShimAlias()` / `nodeShimDefine()` / `inlinePackages()` 를 쓴다.
  * ⚠️ 플러그인은 `worker.plugins` 에도 넣어야 한다 — 워커 번들은 파이프라인이 별도다.

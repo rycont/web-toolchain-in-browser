@@ -1,5 +1,5 @@
 {
-  "name": "browser-webapp-runtime",
+  "name": "web-toolchain-in-browser",
   "private": true,
   "type": "module",
   "description": "Vite 8 툴체인을 브라우저 워커에서 돌린다 (개발용 워크스페이스; 배포는 JSR)",
@@ -35,5 +35,6 @@
     "readable-stream": "^4.7.0",
     "stream-browserify": "^3.0.0",
     "tailwindcss": "^4.3.2"
-  }
+  },
+  "version": "0.1.0"
 }

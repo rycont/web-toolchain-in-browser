@@ -115,7 +115,7 @@ export function patchRolldownWasm(
   const target = `${distDir}/rolldown-binding.wasi-browser.js`
 
   return {
-    name: 'browser-webapp-runtime:patch-rolldown-wasm',
+    name: 'web-toolchain-in-browser:patch-rolldown-wasm',
     enforce: 'pre',
     load(id: string) {
       if (id.split('?')[0] !== target) return undefined

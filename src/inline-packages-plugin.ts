@@ -17,7 +17,7 @@
  *
  * ```ts
  * // vite.config.ts (워커 번들 빌드용)
- * import { inlinePackages } from '@rycont/browser-webapp-runtime/inline-packages-plugin'
+ * import { inlinePackages } from '@rycont/web-toolchain-in-browser/inline-packages-plugin'
  * export default { plugins: [inlinePackages(['react', 'react-dom', 'tailwindcss'])] }
  * ```
  *
@@ -83,7 +83,7 @@ export function inlinePackages(
   from: string = import.meta.url,
 ): InlinePackagesPlugin {
   return {
-    name: 'browser-webapp-runtime:inline-packages',
+    name: 'web-toolchain-in-browser:inline-packages',
     resolveId(id: string) {
       return id === VIRTUAL_ID ? RESOLVED_ID : undefined
     },

@@ -48,7 +48,7 @@ if (!fs.existsSync(CRT)) {
   execFileSync('openssl', [
     'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
     '-keyout', KEY, '-out', CRT, '-days', '365',
-    '-subj', '/CN=browser-webapp-runtime',
+    '-subj', '/CN=web-toolchain-in-browser',
     '-addext', `subjectAltName=${san}`,
   ], { stdio: 'inherit' })
 }

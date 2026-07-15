@@ -5,7 +5,7 @@
  *
  * ```js
  * // my-sw.js  (별도 엔트리로 빌드해서 루트에 배치)
- * import '@rycont/browser-webapp-runtime/sw'
+ * import '@rycont/web-toolchain-in-browser/sw'
  * ```
  *
  * 서버는 `Service-Worker-Allowed: /` 를 보내야 루트 스코프로 등록된다.

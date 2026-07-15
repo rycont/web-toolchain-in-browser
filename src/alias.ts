@@ -63,7 +63,7 @@ function rolldownBrowserDist(file: string): string {
  * `node:fs` 가 `node:fs/promises` 를 먼저 삼켜버린다. 긴 것부터 넣어야 한다.
  *
  * ```js
- * import { nodeShimAlias } from '@rycont/browser-webapp-runtime/alias'
+ * import { nodeShimAlias } from '@rycont/web-toolchain-in-browser/alias'
  *
  * export default {
  *   resolve: { alias: nodeShimAlias(), conditions: ['browser', 'import', 'default'] },
