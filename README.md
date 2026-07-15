@@ -52,6 +52,60 @@ Chrome 149 / 워커 / COOP·COEP 적용 상태에서 실측:
 
 ![Todo 앱](test/browser/screenshot.png)
 
+## 사용
+
+```ts
+// my-worker.ts
+import '@rycont/browser-webapp-runtime/shims/globals'   // ← Vite import 보다 먼저
+import { createBrowserRuntime, serveWorker } from '@rycont/browser-webapp-runtime/runtime'
+import inlinedPackages from 'virtual:inlined-packages'
+import vitePkg from 'vite/package.json'
+import clientMjs from 'vite/dist/client/client.mjs?raw'
+import envMjs from 'vite/dist/client/env.mjs?raw'
+
+// ⚠️ serveWorker 앞에 await 가 있으면 안 된다 — SW 요청이 유실된다
+const ready = (async () => {
+  const react = (await import('@vitejs/plugin-react')).default
+  return createBrowserRuntime({
+    files: { 'index.html': '...', 'src/main.tsx': '...' },
+    packages: inlinedPackages,
+    vite: { packageJson: vitePkg, clientMjs, envMjs },
+    plugins: [react()],   // Tailwind 어댑터는 자동으로 붙는다
+  })
+})()
+serveWorker(ready)
+const runtime = await ready
+
+runtime.writeFile('src/App.tsx', newCode)   // 편집 → 무효화까지 한 번에
+```
+
+```ts
+// 페이지
+import { createPreview, explainUnsupported } from '@rycont/browser-webapp-runtime/preview'
+
+const why = explainUnsupported()
+if (why) throw new Error(why)   // 무한 대기 대신 이유를 알려준다
+
+const preview = await createPreview({
+  worker: new Worker(new URL('./my-worker.ts', import.meta.url), { type: 'module' }),
+  swUrl: '/sw.js',
+  iframe: document.querySelector('iframe'),
+})
+await preview.load()
+await preview.reload()   // 파일 고친 뒤
+```
+
+```js
+// sw.js — 별도 엔트리로 빌드해서 루트에 배치. 서버는 `Service-Worker-Allowed: /` 필요.
+import '@rycont/browser-webapp-runtime/sw'
+```
+
+빌드 설정은 `test/browser/vite.config.ts` 참고. 요점 셋:
+
+- `resolve.alias: nodeShimAlias()` + `conditions: ['browser', 'import', 'default']`
+- `define: nodeShimDefine()`
+- **`worker.plugins` 에도 플러그인을 넣을 것** — 워커 번들은 파이프라인이 별도다
+
 ## 성능 (Chrome 149, localhost, 캐시 없음)
 
 ```

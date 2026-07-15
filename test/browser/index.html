@@ -3,41 +3,41 @@
   <body style="margin: 0; font: 13px/1.5 ui-monospace, monospace">
     <pre id="env" style="padding: 8px; margin: 0; background: #f6f8fa"></pre>
     <pre id="o" style="padding: 8px; margin: 0">running…</pre>
-    <!-- Vite dev server(워커)가 SW 를 통해 여기에 서빙한다 -->
     <iframe
       id="preview"
       style="width: 100%; height: 560px; border: 0; border-top: 1px solid #ddd"
     ></iframe>
 
     <script type="module">
-      const out = document.getElementById('o')
+      // 라이브러리 API 만으로 프리뷰를 띄운다. 이 파일이 곧 사용 예제다.
+      import { createPreview, explainUnsupported } from '../../src/preview.ts'
 
-      // ── 실기기 진단 — 화면에 바로 띄운다 ───────────────────────────────
-      // crossOriginIsolated 가 false 면 SharedArrayBuffer 가 없고 rolldown 의 wasm 이
-      // 초기화 단계에서 죽는다. LAN 에서 http:// 로 열면 secure context 가 아니라서
-      // 여기가 false 가 된다 — HTTPS 로 열어야 한다 (test/browser/serve-lan.mjs).
-      const T_START = performance.now()
       const env = document.getElementById('env')
+      const out = document.getElementById('o')
+      const T0 = performance.now()
+
+      // 지원 안 되는 환경이면 여기서 이유가 나온다 (무한 대기 대신)
+      const why = explainUnsupported()
       const envLines = [
-        `crossOriginIsolated : ${globalThis.crossOriginIsolated}` +
-          (globalThis.crossOriginIsolated ? '' : '   ← false 면 여기서 끝. HTTPS 로 여세요'),
+        `crossOriginIsolated : ${globalThis.crossOriginIsolated}`,
         `SharedArrayBuffer   : ${typeof SharedArrayBuffer !== 'undefined'}`,
-        `Worker              : ${typeof Worker !== 'undefined'}`,
         `hardwareConcurrency : ${navigator.hardwareConcurrency}`,
         `deviceMemory        : ${navigator.deviceMemory ?? '(미지원)'} GB`,
         `UA                  : ${navigator.userAgent}`,
       ]
       env.textContent = envLines.join('\n')
-      const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
+      if (why) {
+        out.textContent = '지원되지 않는 환경:\n' + why
+        window.__done = [{ name: '환경 미지원', ok: false, detail: why }]
+        throw new Error(why)
+      }
 
-      // 워커가 매 단계 중간 결과를 보낸다. 하드 블록이면 마지막 postMessage 이후로
-      // 멈추므로, 어디까지 왔는지가 곧 어디서 멈췄는지다.
+      const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
       window.__partial = []
       worker.onmessage = (e) => {
-        if (Array.isArray(e.data)) {
-          window.__partial = e.data
-          out.textContent = e.data.map((r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}`).join('\n')
-        }
+        if (!Array.isArray(e.data)) return
+        window.__partial = e.data
+        out.textContent = e.data.map((r) => `${r.ok ? 'PASS' : 'FAIL'}  ${r.name}`).join('\n')
       }
       worker.onerror = (e) => {
         window.__done = [
@@ -45,55 +45,22 @@
         ]
       }
 
-      // ── SW 브리지 ────────────────────────────────────────────────────────
-      // SW 는 dedicated worker 와 직접 대화할 수 없다. 페이지가 중계한다:
-      //   iframe fetch → SW → 여기 → 워커(Vite) → 역순 반환
-      navigator.serviceWorker.addEventListener('message', (e) => {
-        if (e.data?.type !== 'vite-request') return
-        worker.postMessage(e.data, [e.ports[0]])
+      const preview = await createPreview({
+        worker,
+        // ⚠️ `new URL('./sw.js', import.meta.url)` 을 쓰면 안 된다 — Vite 가 정적
+        // 에셋으로 보고 **원본을 그대로 복사**해서 import 문이 살아있는 채로 나간다.
+        // (SW 는 classic worker 로 등록되므로 import 가 있으면 평가가 실패한다.)
+        // 별도 엔트리로 번들해서 리터럴 경로로 참조한다.
+        swUrl: '/sw.js',
+        iframe: document.getElementById('preview'),
       })
+      await preview.load()
 
-      console.log('[bridge] SW 등록 시도')
-      try {
-        await navigator.serviceWorker.register(new URL('./sw.js', import.meta.url), { scope: '/' })
-        console.log('[bridge] SW 등록 성공')
-      } catch (err) {
-        console.error('[bridge] SW 등록 실패:', String(err))
-        window.__swError = String(err)
-      }
-      await navigator.serviceWorker.ready
-      // 첫 로드에는 컨트롤러가 없을 수 있다 — 잡힐 때까지 기다린다
-      if (!navigator.serviceWorker.controller) {
-        await new Promise((r) =>
-          navigator.serviceWorker.addEventListener('controllerchange', r, { once: true }),
-        )
-      }
-      window.__swReady = true
-      console.log('[bridge] SW ready, controller=', !!navigator.serviceWorker.controller)
-
-      // 워커의 Vite 서버가 준비될 때까지 기다렸다가 iframe 을 띄운다
-      const serverReady = () =>
-        (window.__partial ?? []).some((r) => r.name.includes('createServer') && r.ok)
-      for (let i = 0; i < 1200 && !serverReady(); i++) {
-        await new Promise((r) => setTimeout(r, 20))
-      }
-      console.log('[bridge] serverReady=', serverReady(), '→ iframe 로드')
-      document.getElementById('preview').src = '/preview/index.html'
-
-      // iframe 이 실제로 뜰 때까지 기다렸다가 결과를 확정한다
-      const iframeLoaded = new Promise((r) =>
-        document.getElementById('preview').addEventListener('load', r, { once: true }),
-      )
-      await Promise.race([iframeLoaded, new Promise((r) => setTimeout(r, 60000))])
-      console.log('[bridge] iframe load 이벤트 완료')
-      // ⚠️ __done 을 **먼저** 세운다. measureUserAgentSpecificMemory() 는 다음 GC 까지
-      // 기다리므로 수십 초가 걸릴 수 있고, 그 앞에 두면 테스트 러너가 그만큼 대기해서
-      // 렌더 시간이 62초로 보인다 (실제로 그렇게 잘못 쟀었다).
-      const elapsed = ((performance.now() - T_START) / 1000).toFixed(1)
+      const elapsed = ((performance.now() - T0) / 1000).toFixed(1)
       env.textContent = envLines.join('\n') + `\n렌더까지          : ${elapsed}초`
       window.__done = window.__partial
 
-      // 힙 측정은 결과 확정 후에 느긋하게 — 화면 표시용
+      // 힙 측정은 결과 확정 **후에** — 이 API 는 다음 GC 까지 기다려서 수십 초가 걸린다
       try {
         if (performance.measureUserAgentSpecificMemory) {
           const m = await performance.measureUserAgentSpecificMemory()

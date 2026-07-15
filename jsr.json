@@ -29,7 +29,10 @@
     "./extract-candidates": "./src/extract-candidates.ts",
     "./inline-packages-plugin": "./src/inline-packages-plugin.ts",
     "./patch-rolldown-wasm": "./src/patch-rolldown-wasm.ts",
-    "./sw-bridge": "./src/sw-bridge.ts"
+    "./sw-bridge": "./src/sw-bridge.ts",
+    "./runtime": "./src/runtime.ts",
+    "./preview": "./src/preview.ts",
+    "./sw": "./src/sw.ts"
   },
   "publish": {
     "include": [

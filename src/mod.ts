@@ -1,11 +1,27 @@
 /**
- * browser-webapp-runtime — Vite 8 툴체인을 브라우저 워커 안에서 돌리기 위한 조각들.
+ * browser-webapp-runtime — Vite 8 + React + Tailwind + TypeScript 앱을
+ * 브라우저 안에서 돌린다. 서버 없이.
  *
- * 현재 상태는 README 의 "검증 현황" 표를 볼 것. 아직 Vite 부팅은 뚫리지 않았다.
+ * 두 쪽으로 나뉜다:
+ *   - 워커: `createBrowserRuntime()` + `serveWorker()`  (`./runtime.ts`)
+ *   - 페이지: `createPreview()`                          (`./preview.ts`)
+ *   - SW 엔트리: `import '@rycont/browser-webapp-runtime/sw'`
+ *
+ * 빌드 설정에는 `nodeShimAlias()` / `nodeShimDefine()` / `inlinePackages()` 를 쓴다.
+ * ⚠️ 플러그인은 `worker.plugins` 에도 넣어야 한다 — 워커 번들은 파이프라인이 별도다.
+ *
+ * 현재 상태와 실측치는 README 참고.
  */
 
-export { nodeShimAlias } from './alias.ts'
+export { createBrowserRuntime, serveWorker } from './runtime.ts'
+export type { BrowserRuntime, CreateBrowserRuntimeOptions } from './runtime.ts'
+export { createPreview, explainUnsupported, PREVIEW_PREFIX } from './preview.ts'
+export type { CreatePreviewOptions, Preview } from './preview.ts'
+export { nodeShimAlias, nodeShimDefine } from './alias.ts'
 export type { AliasEntry } from './alias.ts'
+export { seedPackages, seedProject, seedViteInstall, seedNodeModule } from './seed.ts'
+export type { ViteInstallSeed } from './seed.ts'
+export { tailwindBrowser } from './tailwind.ts'
 export { installProcessShim } from './shims/process.ts'
 export type { MinimalProcess } from './shims/process.ts'
 
